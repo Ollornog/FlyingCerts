@@ -33,14 +33,17 @@ if [[ ${#GO_DATEIEN[@]} -gt 0 ]]; then
     step "go vet — verdaechtige Konstrukte"
     go vet ./... || fail "go vet"
 
+    # -count=1 schaltet den Test-Cache ab. Ohne das meldet ein zweiter Lauf
+    # "(cached)" und prueft gar nichts mehr — womit der Wiederholbarkeits-
+    # Durchgang der CI zur Zierde wird, obwohl er das Gegenteil beweisen soll.
     if [[ $FAST -eq 1 ]]; then
         step "go test (kurz, --fast)"
-        go test -short ./... || fail "go test -short"
+        go test -count=1 -short ./... || fail "go test -short"
     else
         step "go test — mit Race-Detektor"
         # Der Race-Detektor gehoert hier hin, nicht in einen Sonderlauf: der Server bedient
         # mehrere Agenten gleichzeitig und teilt sich Zertifikatszustand.
-        go test -race ./... || fail "go test -race"
+        go test -count=1 -race ./... || fail "go test -race"
     fi
 else
     step "Go"
