@@ -55,7 +55,7 @@ Binaries for Linux (amd64 and arm64) are attached to each
 [release](https://github.com/Ollornog/FlyingCerts/releases):
 
 ```bash
-V=v0.1.0
+V=v0.1.1
 B=https://github.com/Ollornog/FlyingCerts/releases/download/$V
 curl -fsSLO $B/SHA256SUMS
 curl -fsSLO $B/flying-certs-server_${V}_linux_amd64
@@ -346,7 +346,7 @@ is broken, not the code — so the repeatability promise is demonstrated rather 
 
 ## Status
 
-**Early, and honest about it.** `v0.1.0` is out and the binaries work, but the interfaces —
+**Early, and honest about it.** `v0.1.1` is out and the binaries work, but the interfaces —
 configuration keys, the HTTP routes, the on-disk layout — are not stable and will change without a
 major version to warn you until `1.0.0`.
 

@@ -414,12 +414,19 @@ func (r *Registry) Review(now time.Time, silentAfter, warnBefore time.Duration) 
 			continue
 		}
 
+		// A host that holds a device key cannot lock itself out: it asks for
+		// a new identity whenever it needs one (ADR-18). Warning about an
+		// expiry it recovers from by itself would make `check` cry wolf for
+		// every agent on a short lifetime — which is the recommended setup.
+		recoverable := agent.PublicKey != ""
+		warn := effectiveWarnBefore(warnBefore, agent.IdentityLifetime)
+
 		switch {
-		case !st.IdentityExpires.IsZero() && !now.Before(st.IdentityExpires):
+		case !st.IdentityExpires.IsZero() && !now.Before(st.IdentityExpires) && !recoverable:
 			out = append(out, Finding{name, ConcernLockedOut,
 				fmt.Sprintf("identity expired %s — this host must be enrolled again",
 					st.IdentityExpires.UTC().Format(time.RFC3339))})
-		case !st.IdentityExpires.IsZero() && now.Add(warnBefore).After(st.IdentityExpires):
+		case !st.IdentityExpires.IsZero() && now.Add(warn).After(st.IdentityExpires) && !recoverable:
 			out = append(out, Finding{name, ConcernLockoutSoon,
 				fmt.Sprintf("identity expires %s and it was last seen %s",
 					st.IdentityExpires.UTC().Format(time.RFC3339),
@@ -445,6 +452,29 @@ func (r *Registry) Review(now time.Time, silentAfter, warnBefore time.Duration) 
 		return out[i].Agent < out[j].Agent
 	})
 	return out
+}
+
+// effectiveWarnBefore scales the warning threshold to the lifetime.
+//
+// A fixed threshold is wrong for short lifetimes: five days before expiry is
+// sound advice for a 30-day identity and nonsense for a one-day one, where it
+// means "warn from the moment it is issued". The first release shipped with
+// exactly that, and `check` reported a host that had enrolled seconds earlier
+// as about to lock itself out.
+//
+// A third of the lifetime is the right shape because the agent renews at two
+// thirds: past that point it has already missed its renewal, which is the
+// thing worth saying. The configured value stays the ceiling, so nothing gets
+// noisier than it was.
+func effectiveWarnBefore(configured time.Duration, span lifetime.Span) time.Duration {
+	if !span.Set() || span.IsUnlimited() {
+		// Unknown or unlimited: the configured value is all there is to go on.
+		return configured
+	}
+	if third := span.Duration() / 3; third < configured {
+		return third
+	}
+	return configured
 }
 
 // ensure must be called with the write lock held.

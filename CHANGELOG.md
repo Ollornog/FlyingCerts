@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-20
+
+### Fixed
+- `check` reported a freshly enrolled agent as about to lock itself out
+  whenever its identity lifetime was shorter than the warning threshold. The
+  threshold was a fixed five days, so a one-day identity was past it from the
+  moment it was issued — and a one-day identity with a device key is the
+  recommended setup, which made the check permanently red for exactly the
+  configuration the documentation asks for. It now scales to a third of the
+  lifetime, with the configured value as the ceiling: past two thirds the
+  agent has missed its own renewal, which is the thing worth saying.
+- A host holding a device key is no longer warned about expiry at all. It
+  cannot lock itself out — it asks for a new identity on its next run. If it
+  stops running altogether, the silence finding still catches it.
+
+Found by running the v0.1.0 binaries from the release page against a real
+broker rather than trusting the green tick.
+
 ## [0.1.0] - 2026-09-20
 
 First release. The interfaces are not stable yet; see the status section in the
@@ -159,4 +177,5 @@ README for what that means in practice.
   redeemed with. It cannot be: the agent generates its key only at redemption.
   ADR-6 records the correction.
 
+[0.1.1]: https://github.com/Ollornog/FlyingCerts/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Ollornog/FlyingCerts/releases/tag/v0.1.0

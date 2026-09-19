@@ -57,7 +57,7 @@ Binaries für Linux (amd64 und arm64) hängen an jedem
 [Release](https://github.com/Ollornog/FlyingCerts/releases):
 
 ```bash
-V=v0.1.0
+V=v0.1.1
 B=https://github.com/Ollornog/FlyingCerts/releases/download/$V
 curl -fsSLO $B/SHA256SUMS
 curl -fsSLO $B/flying-certs-server_${V}_linux_amd64
@@ -363,7 +363,7 @@ wird, ist kaputt — nicht der Code. So ist die Wiederholbarkeit vorgeführt sta
 
 ## Stand
 
-**Früh, und ehrlich darüber.** `v0.1.0` ist draussen und die Binaries laufen, aber die
+**Früh, und ehrlich darüber.** `v0.1.1` ist draussen und die Binaries laufen, aber die
 Schnittstellen — Konfigurationsschlüssel, HTTP-Routen, Ablage auf der Platte — sind nicht stabil und
 ändern sich bis `1.0.0` ohne Major-Version als Vorwarnung.
 

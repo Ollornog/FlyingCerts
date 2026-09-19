@@ -4,4 +4,4 @@ package version
 
 // Version follows SemVer (https://semver.org). On a release it moves together
 // with the changelog entry, in the same commit.
-const Version = "0.1.0"
+const Version = "0.1.1"
