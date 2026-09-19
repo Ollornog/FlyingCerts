@@ -65,6 +65,13 @@ type State struct {
 	LastSeen time.Time `json:"last_seen,omitempty"`
 	// LastDelivered maps certificate name to when it was last handed over.
 	LastDelivered map[string]time.Time `json:"last_delivered,omitempty"`
+	// IdentityExpires is when this agent's identity stops working.
+	//
+	// Kept here rather than derived on demand, because the broker has no way
+	// to ask an agent for its certificate — it only learns this at the moment
+	// it issues one. Without recording it, the warning that matters most
+	// ("this host is about to lock itself out") cannot be given at all.
+	IdentityExpires time.Time `json:"identity_expires,omitempty"`
 	// RevokedAt, when set, shuts the agent out immediately.
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 	// RevokedReason is shown to whoever asks why.
@@ -209,6 +216,16 @@ func (r *Registry) Restore(agentName string) error {
 	return r.persist()
 }
 
+// Enrolled records that an identity was issued, and when it runs out.
+func (r *Registry) Enrolled(agentName string, expires, now time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st := r.ensure(agentName)
+	st.IdentityExpires = expires.UTC()
+	st.LastSeen = now.UTC()
+	return r.persist()
+}
+
 // Seen records a successful authenticated request.
 func (r *Registry) Seen(agentName string, now time.Time) error {
 	r.mu.Lock()
@@ -260,9 +277,8 @@ func (r *Registry) Agents() []Agent {
 	return out
 }
 
-// Silent lists agents that have not been seen since cutoff, so the broker can
-// warn before one locks itself out (ADR-7). An agent that was never seen
-// counts as silent.
+// Silent lists agents that have not been seen since cutoff. An agent that was
+// never seen counts as silent.
 func (r *Registry) Silent(cutoff time.Time) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -274,6 +290,98 @@ func (r *Registry) Silent(cutoff time.Time) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// Concern is a reason to look at an agent, in the order that matters.
+type Concern int
+
+const (
+	// ConcernNone means nothing to report.
+	ConcernNone Concern = iota
+	// ConcernNeverEnrolled means the agent is configured but has never
+	// collected an identity. Usually a host that was set up and forgotten.
+	ConcernNeverEnrolled
+	// ConcernSilent means the agent has an identity but has not been heard
+	// from for a while. It may be fine; it may be a timer that stopped.
+	ConcernSilent
+	// ConcernLockoutSoon means the identity runs out sooner than the agent is
+	// likely to come back. This is the warning that has to arrive in time,
+	// because after expiry there is no way back (ADR-7).
+	ConcernLockoutSoon
+	// ConcernLockedOut means the identity has expired. The host must be
+	// enrolled again; nothing it does on its own will fix this.
+	ConcernLockedOut
+)
+
+func (c Concern) String() string {
+	switch c {
+	case ConcernNeverEnrolled:
+		return "never enrolled"
+	case ConcernSilent:
+		return "silent"
+	case ConcernLockoutSoon:
+		return "about to lock itself out"
+	case ConcernLockedOut:
+		return "locked out"
+	default:
+		return "ok"
+	}
+}
+
+// Finding is one agent worth looking at.
+type Finding struct {
+	Agent   string
+	Concern Concern
+	Detail  string
+}
+
+// Review reports which agents need attention.
+//
+// The lockout warning is the point of this whole milestone. An agent renews
+// its identity at two thirds of its life; if it has not been seen since well
+// before that, it is not going to renew itself, and after expiry nobody can
+// fix it remotely. The warning must therefore arrive while the identity is
+// still valid — a report that says "locked out" is a report that came too late.
+func (r *Registry) Review(now time.Time, silentAfter, warnBefore time.Duration) []Finding {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var out []Finding
+	for name := range r.agents {
+		st, ok := r.state[name]
+		switch {
+		case !ok || st.LastSeen.IsZero():
+			out = append(out, Finding{name, ConcernNeverEnrolled,
+				"configured but has never collected an identity"})
+			continue
+		case st.RevokedAt != nil:
+			continue // revoked on purpose; not a concern
+		}
+
+		switch {
+		case !st.IdentityExpires.IsZero() && !now.Before(st.IdentityExpires):
+			out = append(out, Finding{name, ConcernLockedOut,
+				fmt.Sprintf("identity expired %s — this host must be enrolled again",
+					st.IdentityExpires.UTC().Format(time.RFC3339))})
+		case !st.IdentityExpires.IsZero() && now.Add(warnBefore).After(st.IdentityExpires):
+			out = append(out, Finding{name, ConcernLockoutSoon,
+				fmt.Sprintf("identity expires %s and it was last seen %s",
+					st.IdentityExpires.UTC().Format(time.RFC3339),
+					st.LastSeen.UTC().Format(time.RFC3339))})
+		case st.LastSeen.Before(now.Add(-silentAfter)):
+			out = append(out, Finding{name, ConcernSilent,
+				fmt.Sprintf("last seen %s", st.LastSeen.UTC().Format(time.RFC3339))})
+		}
+	}
+	// Most urgent first, then by name: a report read from the top starts with
+	// what cannot wait.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Concern != out[j].Concern {
+			return out[i].Concern > out[j].Concern
+		}
+		return out[i].Agent < out[j].Agent
+	})
 	return out
 }
 

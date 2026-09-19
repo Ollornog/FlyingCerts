@@ -54,3 +54,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deployment that verifies itself: after the reload, the agent opens a TLS
   connection to the service and compares fingerprints. A reload that exits 0
   without rereading its files is caught instead of reported as success.
+- Expiry tracking: the broker records when each agent's identity runs out, set
+  at enrolment and at every identity renewal.
+- `check`, which separates the four situations worth acting on — never enrolled,
+  silent, lockout soon, locked out — orders them by urgency and exits non-zero,
+  so it works as a cron or monitoring probe. An agent revoked on purpose is not
+  reported as a problem.
+- `serve`, `token`, `agents`, `revoke` and `restore` on the server command. The
+  endpoint issues its own TLS certificate from the agent CA, prunes spent tokens
+  and rate-limit counters hourly, and shuts down gracefully.
+- Backup and restore (`backup`, `backup-info`, `restore-backup`): one archive of
+  everything that cannot be recreated, storing logical areas rather than host
+  paths so a restore can land elsewhere. A redacted copy for diagnosis is marked
+  not restorable and refused by name. The scope is one list, and a test walks the
+  configuration struct so no new state directory can fall out of it silently.
+  The end-to-end test destroys the whole state, restores it, reopens everything
+  from disk and then renews against the CA and delivers to an agent that enrolled
+  before the disaster (ADR-16).
+- `internal/pebbletest`, so the issuance and recovery suites share one DNS-01
+  solver instead of two copies drifting apart.
+
+### Fixed
+- `token -agent NAME` printed the usage block instead of issuing a token. Go's
+  `flag` stops at the first non-flag argument, so everything after the command
+  name was left unparsed. Command flags are now read from their own flag set
+  after the command name — the way a person types it. `-force` moved with them.
+
+### Changed
+- The README no longer claims a bootstrap token is bound to the CSR it will be
+  redeemed with. It cannot be: the agent generates its key only at redemption.
+  ADR-6 records the correction.

@@ -2,7 +2,7 @@
 id: T-3
 type: Task
 title: "Der Sicherungs-Test spielt zurueck UND faehrt danach eine Erneuerung"
-status: offen
+status: erledigt
 milestone: M-5
 tags: [betrieb, test]
 created: 2026-09-19
@@ -28,3 +28,19 @@ eine vollstaendige Erneuerung samt Ausgabe an einen Agenten durch**. Was als mas
 ausgewiesen wird, wird im Test auf Schluesselmaterial durchsucht.
 
 **Fertig, wenn:** Der beschriebene Ablauf als Test laeuft — und beim zweiten Lauf ebenso gruen ist.
+
+---
+
+**Erledigt am 20.09.2026.** Paket `internal/backup` (Archiv mit Manifest, zwei Arten, Bereiche
+statt Wirtspfade), Befehle `backup` / `backup-info` / `restore-backup`, Entscheidung als
+[ADR-16](ADR-16-sicherung.md).
+
+Der geforderte Ablauf laeuft als `TestRestoredBrokerRenewsAndDelivers`: sichern, gesamten Zustand
+loeschen, zurueckspielen, **alles neu von der Platte oeffnen**, gegen Pebble erneuern und an den
+vor dem Ausfall eingeschriebenen Agenten ausliefern — geprueft wird die Seriennummer, die beim
+Agenten ankommt. Was als maskiert ausgewiesen wird, durchsucht
+`TestRedactedArchiveContainsNoKeyMaterial` im entpackten Archiv auf Schluesselmaterial.
+
+Dass die Tests etwas fangen, ist mit drei Mutationsproben belegt (Kontoschluessel aus dem Umfang,
+CA-Schluessel aus dem Umfang, Maskierung wirkungslos) — jede wird rot, jede mit der Meldung, die
+den Fehler benennt. Zweiter Lauf ebenfalls gruen.

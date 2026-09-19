@@ -11,13 +11,13 @@ Konventionen: [README-KONVENTION.md](README-KONVENTION.md).
 * ☑ **[M-2](M-2-bootstrap-und-mtls.md)** Aufnahme eines Agenten — Bootstrap-Token und mTLS — 1/1 erledigt
 * ☑ **[M-3](M-3-ausstellung-je-agent.md)** Modus `issue` — je Agent ein eigenes Zertifikat — noch keine Aufgaben
 * ☑ **[M-4](M-4-agent.md)** Agent — anfordern, ablegen, neu laden — noch keine Aufgaben
-* ☐ **[M-5](M-5-audit-und-ablauf.md)** Aufzeichnung und Ablaufverfolgung — 0/1 erledigt
+* ☑ **[M-5](M-5-audit-und-ablauf.md)** Aufzeichnung und Ablaufverfolgung — 1/1 erledigt
 
 ## Aufgaben
 
 * ☑ **[T-1](T-1-gesundheit-prueft-paar.md)** Gesundheitspruefung eines Zertifikats prueft das PAAR, nicht nur das Zertifikat · M-1
 * ☑ **[T-2](T-2-ratenbegrenzung-nach-pruefung.md)** Ratenbegrenzung erst nach der Identitaetspruefung, nie auf ungepruefte Eingaben · M-2
-* ☐ **[T-3](T-3-sicherung-faehrt-erneuerung.md)** Der Sicherungs-Test spielt zurueck UND faehrt danach eine Erneuerung · M-5
+* ☑ **[T-3](T-3-sicherung-faehrt-erneuerung.md)** Der Sicherungs-Test spielt zurueck UND faehrt danach eine Erneuerung · M-5
 * ☑ **[T-4](T-4-ende-zu-ende-gegen-pebble.md)** Ende-zu-Ende-Lauf gegen eine Test-CA (Pebble) · M-1
 
 ## Entscheidungen (ADR)
@@ -37,3 +37,4 @@ Konventionen: [README-KONVENTION.md](README-KONVENTION.md).
 * ☑ **[ADR-13](ADR-13-go-handwerk.md)** Handwerk — lego v5, atomares Schreiben, Zertifikatstausch im Betrieb
 * ☑ **[ADR-14](ADR-14-dns-anbieter-auswahl.md)** Eine kuratierte Auswahl von DNS-Anbietern statt aller 200
 * ☑ **[ADR-15](ADR-15-eigene-ca-nur-fuer-agenten.md)** Der Vermittler ist doch eine CA — aber nur für Agenten-Ausweise
+* ☑ **[ADR-16](ADR-16-sicherung.md)** Eine Sicherung ist erst eine, wenn danach erneuert und ausgeliefert wird

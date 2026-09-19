@@ -104,7 +104,10 @@ DNS-Zugangsdaten stimmen.
 Kein langlebiges geteiltes Geheimnis, und kein Login auf dem Vermittler.
 
 1. Du stellst auf dem Vermittler ein **Bootstrap-Token** für einen benannten Host aus. Einmalig
-   gültig, kurzlebig, gebunden an diesen Namen **und** an die Anfrage, mit der es eingelöst wird.
+   gültig, kurzlebig, gebunden an diesen Namen und an die eigene CA des Vermittlers. **Nicht** an den
+   CSR: der Agent erzeugt seinen Schlüssel erst beim Einlösen, es gibt zu diesem Zeitpunkt also nichts
+   zu binden. ADR-6 hält diese Korrektur fest, statt sie zu verstecken — ein Versprechen, das ein
+   Ablauf nicht halten kann, ist schlimmer als eines, das nie gegeben wurde.
 2. Der Agent löst es **einmal** ein und erhält sein eigenes Client-Zertifikat.
 3. Ab dann weist er sich per **mTLS** aus — etwas anderes wird nicht angenommen.
 4. Er erneuert dieses Zertifikat rechtzeitig, damit er sich nicht aussperrt.
@@ -127,6 +130,66 @@ Antwort.
 Der Vermittler gibt ein Zertifikat *samt privatem Schlüssel* an jeden dafür berechtigten Host.
 Einfacher, und manchmal die einzige Möglichkeit — aber der Schlüssel reist, und alle Hosts, die ihn
 halten, teilen ein Schicksal. Ablauf ist dann eine Eigenschaft des Zertifikats, nicht des Hosts.
+
+## Den Vermittler betreiben
+
+`obtain` und `renew` brauchen nichts als einen Timer. Agenten zu bedienen ist ein eigener Befehl:
+
+```bash
+flying-certs-server -config config.yaml serve              # der mTLS-Endpunkt
+flying-certs-server -config config.yaml token -agent web1  # einmalig, gibt die Marke aus
+flying-certs-server -config config.yaml agents             # wer ist aufgenommen, und bis wann
+flying-certs-server -config config.yaml check              # endet ungleich null, wenn etwas anliegt
+```
+
+```
+AGENT  MODE   LAST SEEN  IDENTITY     CERTIFICATES
+web1   issue  2 h ago    27 days      1
+gw     share  9 days     4 days left  2
+```
+
+`check` ist der Befehl für cron oder eine Überwachungssonde. Er meldet vier Lagen, die dringlichste
+zuerst, und endet bei jeder davon ungleich null:
+
+| | |
+|---|---|
+| **never enrolled** | konfiguriert, hat aber nie eine Identität abgeholt |
+| **silent** | seit einer Woche nicht mehr gemeldet — vermutlich steht sein Timer |
+| **lockout soon** | seine Identität läuft aus, bevor er sich plausibel selbst erneuern kann |
+| **locked out** | Identität abgelaufen; er braucht jetzt von Hand eine neue Marke ([ADR-7](../backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) |
+
+Ein absichtlich widerrufener Agent taucht nicht als Problem auf.
+
+```bash
+flying-certs-server -config config.yaml revoke -agent web1 -reason "ausgemustert"
+flying-certs-server -config config.yaml restore -agent web1
+```
+
+Ein Widerruf wirkt bei der nächsten Anfrage des Agenten, nicht erst beim nächsten Neustart.
+
+## Sicherungen
+
+Der ACME-Kontoschlüssel und die Agenten-CA lassen sich nicht neu erzeugen. Ist der erste weg,
+gelingt nie wieder eine Erneuerung; ist die zweite weg, ist jeder Agent ausgesperrt und kommt nicht
+von allein zurück.
+
+```bash
+flying-certs-server -config config.yaml backup -out /backup/broker-$(date +%F).tar.gz
+flying-certs-server -config config.yaml backup-info -in /backup/broker-2026-09-20.tar.gz
+flying-certs-server -config config.yaml restore-backup -in /backup/broker-2026-09-20.tar.gz
+```
+
+Das Archiv enthält private Schlüssel und sagt das auch. `-redact` lässt sie weg für eine Kopie zur
+Fehlersuche — die ist als **nicht wiederherstellbar** gekennzeichnet, und `restore-backup` lehnt sie
+mit Namen ab, statt auf halbem Weg zu scheitern. `backup-info` beantwortet „könnte ich hieraus
+wirklich zurückspielen?" in einer Sekunde und endet ungleich null, wenn die Antwort nein lautet —
+genau die Prüfung, die sich regelmäßig zu laufen lohnt.
+
+Mehr als eine `tar`-Hülle ist das wegen des Tests: er zerstört den gesamten Zustand, spielt zurück,
+öffnet alles neu von der Platte und **erneuert dann gegen die CA und liefert an einen Agenten aus,
+der sich vor dem Ausfall eingeschrieben hat**. [ADR-16](../backlog/ADR-16-sicherung.md) erklärt,
+warum — vier getrennte Sicherungsausfälle in einem vergleichbaren Projekt, jeder davon eine
+Sicherung, die nur auf „die Dateien sind wieder da" geprüft worden war.
 
 ## DNS-Anbieter
 
@@ -183,26 +246,26 @@ wird, ist kaputt — nicht der Code. So ist die Wiederholbarkeit vorgeführt sta
 
 ## Stand
 
-**Früh, und ehrlich darüber.** Die Schnittstellen sind nicht stabil, ein brauchbares Release gibt es
-noch nicht.
+**Früh, und ehrlich darüber.** Die Schnittstellen sind nicht stabil, es gibt noch keine brauchbare
+Veröffentlichung.
 
-Beide Seiten gibt es, und sie sprechen miteinander. Der Vermittler holt und hält Zertifikate
-(`register`, `obtain`, `renew`, `list`); Agenten nehmen mit einem Einmal-Token teil und holen ihre
-danach per mTLS. Beide Ausliefermodi laufen, die Namens-Autorisierung greift, jede Entscheidung
-wird aufgezeichnet, und Auslieferungen prüfen sich selbst.
+Alle fünf Meilensteine in [`backlog/`](../backlog/) sind erledigt. Der Vermittler holt und hält
+Zertifikate, gibt sie über mTLS aus, führt Buch darüber, wer wann was abgeholt hat und wann welche
+Identität ausläuft, warnt bevor sich ein Host aussperrt, und lässt sich sichern und zurückspielen.
+Agenten schreiben sich mit einer einmaligen Marke ein, holen über mTLS und prüfen nach, ob ihr
+Neuladen tatsächlich gewirkt hat.
 
-**Durchgängig gegen eine echte CA bewiesen.** Der volle Weg — Konto anlegen, per DNS-01 holen, mit
-Nennung des Vorgängers erneuern, die CA nach ihrem Wunschzeitpunkt fragen — läuft bei jedem CI-Lauf
-gegen Pebble, die Test-CA von Let's Encrypt. Dort scheitert er, statt sich zu überspringen, wenn die
-Test-CA fehlt: ein Test, der still übersprungen wird, ist Dekoration.
+**Ende zu Ende gegen eine echte CA belegt.** Zwei Läufe gegen Pebble, die Test-CA von Let's Encrypt,
+bei jedem CI-Lauf: der Ausstellungsweg (Konto, DNS-01, Erneuerung mit Nennung des Vorgängers, ARI)
+und der Wiederherstellungsweg (alles zerstören, zurückspielen, erneuern, ausliefern). Beide
+scheitern, statt zu überspringen, wenn die Test-CA fehlt — ein Test, der still übersprungen wird,
+ist Dekoration.
 
-Offen ist noch **M-5** in [`backlog/`](../backlog/): die Ablaufverfolgung und die Warnung, bevor
-ein Agent sich aussperrt. Die Bausteine dafür stehen, die Auswertung fehlt.
-
-Die Architekturentscheidungen fielen **vor** dem Code, aus der Untersuchung dessen, was vergleichbare
-Projekte falsch gemacht haben — jede ist als ADR in [`backlog/`](../backlog/) festgehalten und nennt
-den Fehler, den sie vermeidet. Wer eine davon für falsch hält, findet die Begründung aufgeschrieben
-und kann dagegen argumentieren.
+Die Entwurfsentscheidungen fielen **vor** dem Code, aus dem Studium dessen, was vergleichbare
+Projekte falsch gemacht haben — jede steht als ADR in [`backlog/`](../backlog/) und benennt den
+Fehler, den sie vermeidet. Wo sich eine als falsch herausstellte, sagt das ADR es, statt still
+umgeschrieben zu werden. Wer anderer Meinung ist, findet die Begründung aufgeschrieben und kann
+dagegen argumentieren.
 
 MIT-Lizenz.
 

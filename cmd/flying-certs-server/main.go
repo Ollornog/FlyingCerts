@@ -1,9 +1,9 @@
 // Command flying-certs-server is the broker: it obtains certificates from an
 // ACME CA on behalf of hosts that cannot reach one themselves.
 //
-// At this milestone it is a set of commands rather than a daemon. The mTLS API
-// that agents talk to comes with M-2; until then the broker can already be
-// driven from a timer, which is enough to keep certificates current.
+// It is both a set of commands and a service. `obtain` and `renew` run from a
+// timer and keep the certificates current; `serve` runs the mTLS endpoint that
+// agents collect them from. A broker with no agents needs only the timer.
 package main
 
 import (
@@ -36,6 +36,18 @@ Commands:
   obtain      fetch every configured certificate that is not stored yet
   renew       renew what is due, asking the CA when it prefers (ARI)
   list        show what is stored and how much life is left
+
+  serve       run the endpoint agents talk to
+  token       issue a single-use bootstrap token for an agent
+  agents      show what the broker knows about each agent
+  check       report what needs attention; exits non-zero when something does
+  revoke      shut an agent out at once (-agent NAME -reason TEXT)
+  restore     lift a revocation (-agent NAME)
+
+  backup         save everything that cannot be recreated (-out FILE [-redact])
+  backup-info    say whether an archive could actually be restored (-in FILE)
+  restore-backup put an archive back (-in FILE [-force])
+
   providers   list the DNS providers compiled into this build
   version     print the version
 
@@ -52,7 +64,6 @@ func main() {
 func run() error {
 	var (
 		configPath = flag.String("config", "/etc/flying-certs/config.yaml", "path to the configuration file")
-		force      = flag.Bool("force", false, "renew even when nothing is due (use sparingly: rate limits are real)")
 		verbose    = flag.Bool("verbose", false, "log debug detail")
 	)
 	flag.Usage = func() {
@@ -61,11 +72,31 @@ func run() error {
 	}
 	flag.Parse()
 
-	if flag.NArg() != 1 {
+	if flag.NArg() < 1 {
 		flag.Usage()
-		return errors.New("exactly one command expected")
+		return errors.New("a command is expected")
 	}
 	command := flag.Arg(0)
+
+	// Flags that belong to a subcommand are parsed here, after the command
+	// name. Go's flag package stops at the first non-flag argument, so
+	// `token -agent gateway` would otherwise be read as "the command token
+	// plus two stray arguments" — which is exactly how a person types it.
+	sub := flag.NewFlagSet(command, flag.ContinueOnError)
+	sub.SetOutput(os.Stderr)
+	agentName := sub.String("agent", "", "which agent (token, revoke, restore)")
+	tokenLife := sub.Duration("token-lifetime", 0, "how long a bootstrap token stays usable (token)")
+	reason := sub.String("reason", "", "why (revoke)")
+	out := sub.String("out", "", "file to write (backup)")
+	in_ := sub.String("in", "", "file to read (restore, backup-info)")
+	redact := sub.Bool("redact", false, "leave keys out; the result cannot be restored (backup)")
+	force := sub.Bool("force", false, "renew although nothing is due, or restore over existing state")
+	if err := sub.Parse(flag.Args()[1:]); err != nil {
+		return err
+	}
+	if sub.NArg() > 0 {
+		return fmt.Errorf("unexpected argument %q after %q", sub.Arg(0), command)
+	}
 
 	// Two commands need no configuration, so they work on a fresh machine.
 	switch command {
@@ -119,6 +150,33 @@ func run() error {
 		return cmdObtainOrRenew(ctx, accounts, certs, clientOpts, cfg, log, true, *force)
 	case "list":
 		return cmdList(certs)
+	case "serve":
+		return cmdServe(ctx, cfg, certs, accounts, clientOpts, log)
+	case "token":
+		if *agentName == "" {
+			return errors.New("-agent is required: a token is issued for one named agent")
+		}
+		return cmdToken(cfg, certs, *agentName, *tokenLife)
+	case "agents":
+		return cmdAgents(cfg, certs)
+	case "check":
+		return cmdCheck(cfg, certs)
+	case "revoke":
+		if *agentName == "" {
+			return errors.New("-agent is required")
+		}
+		return cmdRevoke(cfg, certs, *agentName, *reason)
+	case "restore":
+		if *agentName == "" {
+			return errors.New("-agent is required")
+		}
+		return cmdRestore(cfg, certs, *agentName)
+	case "backup":
+		return cmdBackup(cfg, *out, *redact)
+	case "backup-info":
+		return cmdBackupInfo(*in_)
+	case "restore-backup":
+		return cmdRestoreBackup(cfg, *in_, *force)
 	default:
 		flag.Usage()
 		return fmt.Errorf("unknown command %q", command)

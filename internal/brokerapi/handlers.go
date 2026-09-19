@@ -113,7 +113,10 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 
 	ev.Allowed = true
 	s.audit.Record(ev)
-	if err := s.agents.Seen(rec.AgentName, now); err != nil {
+	// Record when this identity runs out. The broker cannot ask an agent for
+	// its certificate later, so this is the only moment it can learn it — and
+	// without it the lockout warning cannot be given at all.
+	if err := s.agents.Enrolled(rec.AgentName, now.Add(agentLifetime(s.lifetime)), now); err != nil {
 		s.log.Warn("could not record the enrolment", slog.String("error", err.Error()))
 	}
 
@@ -355,7 +358,7 @@ func (s *Server) handleRenewIdentity(w http.ResponseWriter, r *http.Request, age
 
 	ev.Allowed = true
 	s.audit.Record(ev)
-	if err := s.agents.Seen(agentName, now); err != nil {
+	if err := s.agents.Enrolled(agentName, now.Add(agentLifetime(s.lifetime)), now); err != nil {
 		s.log.Warn("could not record a renewal", slog.String("error", err.Error()))
 	}
 	writeJSON(w, http.StatusOK, renewResponse{

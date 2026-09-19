@@ -4,18 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
-	"fmt"
 	"log/slog"
-	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Ollornog/flying-certs/internal/certinfo"
+	"github.com/Ollornog/flying-certs/internal/pebbletest"
 	"github.com/go-acme/lego/v5/certcrypto"
-	"github.com/go-acme/lego/v5/challenge/dns01"
 )
 
 // The end-to-end run against a real ACME CA.
@@ -25,90 +21,11 @@ import (
 // that loads, an issuer that obtains, a store that keeps — each fine on its
 // own and still useless if the chain between them is wrong.
 //
-// It runs against Pebble, Let's Encrypt's test CA:
-//
-//	docker run -d --name fc-challtestsrv --network fc-pebble \
-//	  -p 8055:8055 ghcr.io/letsencrypt/pebble-challtestsrv:latest \
-//	  -defaultIPv6 "" -defaultIPv4 127.0.0.1
-//	docker run -d --name fc-pebble --network fc-pebble \
-//	  -p 14000:14000 -e PEBBLE_VA_NOSLEEP=1 \
-//	  ghcr.io/letsencrypt/pebble:latest -dnsserver fc-challtestsrv:8053
-//
-// Without Pebble the test skips, so it never blocks anyone. In CI it must not
-// skip — a test that is always skipped is decoration, not a gate.
-
-const (
-	pebbleDirectory = "https://localhost:14000/dir"
-	challtestsrvAPI = "http://localhost:8055"
-)
-
-// challtestsrvProvider solves DNS-01 by telling Pebble's companion DNS server
-// which TXT record to answer with.
-type challtestsrvProvider struct{ t *testing.T }
-
-func (p challtestsrvProvider) Present(ctx context.Context, domain, _, keyAuth string) error {
-	// lego computes both the record name and its value; recomputing either by
-	// hand is how a solver ends up publishing something the CA will not accept.
-	info := dns01.GetChallengeInfo(ctx, domain, keyAuth)
-	return p.post("/set-txt", map[string]string{"host": info.FQDN, "value": info.Value})
-}
-
-func (p challtestsrvProvider) CleanUp(ctx context.Context, domain, _, keyAuth string) error {
-	info := dns01.GetChallengeInfo(ctx, domain, keyAuth)
-	return p.post("/clear-txt", map[string]string{"host": info.FQDN})
-}
-
-func (p challtestsrvProvider) post(path string, body map[string]string) error {
-	enc, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	resp, err := http.Post(challtestsrvAPI+path, "application/json", bytes.NewReader(enc))
-	if err != nil {
-		return fmt.Errorf("challtestsrv %s: %w", path, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("challtestsrv %s: HTTP %d", path, resp.StatusCode)
-	}
-	return nil
-}
-
-// pebbleClient trusts Pebble's self-signed chain. Acceptable here and nowhere
-// else: this talks to a CA that hands out deliberately worthless certificates.
-func pebbleClient() *http.Client {
-	return &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test CA
-		},
-	}
-}
-
-func pebbleReachable() bool {
-	resp, err := pebbleClient().Get(pebbleDirectory)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
-}
-
-func requirePebble(t *testing.T) {
-	t.Helper()
-	if pebbleReachable() {
-		return
-	}
-	// On the GitHub runner a skip would hide a broken gate, so there it fails.
-	// Locally (and inside ci-local, which has no Docker) skipping is fine.
-	if os.Getenv("GITHUB_ACTIONS") != "" {
-		t.Fatalf("Pebble is not reachable at %s, and this must not be skipped on the CI runner", pebbleDirectory)
-	}
-	t.Skipf("Pebble not reachable at %s — see the comment at the top of this file", pebbleDirectory)
-}
+// The CA is Pebble; internal/pebbletest says how to start it and what happens
+// when it is missing.
 
 func TestEndToEndAgainstPebble(t *testing.T) {
-	requirePebble(t)
+	pebbletest.Require(t)
 
 	dir := t.TempDir()
 	accounts, err := NewAccountStore(dir)
@@ -116,8 +33,8 @@ func TestEndToEndAgainstPebble(t *testing.T) {
 		t.Fatalf("NewAccountStore: %v", err)
 	}
 	opts := ClientOptions{
-		DirectoryURL: pebbleDirectory,
-		HTTPClient:   pebbleClient(),
+		DirectoryURL: pebbletest.DirectoryURL,
+		HTTPClient:   pebbletest.HTTPClient(),
 		UserAgent:    "flying-certs-test",
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -149,8 +66,8 @@ func TestEndToEndAgainstPebble(t *testing.T) {
 	issuer, err := NewIssuer(IssuerConfig{
 		Accounts:    accounts,
 		Client:      opts,
-		DNSProvider: "pebble-challtestsrv",
-		Provider:    challtestsrvProvider{t: t},
+		DNSProvider: pebbletest.ProviderName,
+		Provider:    pebbletest.Provider{},
 		// The record lives in Pebble's companion DNS server, which the local
 		// resolver knows nothing about — the same shape as split-horizon DNS,
 		// and exactly what this option exists for.
@@ -207,14 +124,14 @@ func TestEndToEndAgainstPebble(t *testing.T) {
 // ARI against a CA that supports it. Pebble does, which makes this the only
 // place the real path is exercised rather than a stand-in.
 func TestRenewalInfoAgainstPebble(t *testing.T) {
-	requirePebble(t)
+	pebbletest.Require(t)
 
 	dir := t.TempDir()
 	accounts, err := NewAccountStore(dir)
 	if err != nil {
 		t.Fatalf("NewAccountStore: %v", err)
 	}
-	opts := ClientOptions{DirectoryURL: pebbleDirectory, HTTPClient: pebbleClient()}
+	opts := ClientOptions{DirectoryURL: pebbletest.DirectoryURL, HTTPClient: pebbletest.HTTPClient()}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -224,8 +141,8 @@ func TestRenewalInfoAgainstPebble(t *testing.T) {
 	issuer, err := NewIssuer(IssuerConfig{
 		Accounts:    accounts,
 		Client:      opts,
-		DNSProvider: "pebble-challtestsrv",
-		Provider:    challtestsrvProvider{t: t},
+		DNSProvider: pebbletest.ProviderName,
+		Provider:    pebbletest.Provider{},
 		DNS:         DNSOptions{SkipPropagationCheck: true},
 	})
 	if err != nil {

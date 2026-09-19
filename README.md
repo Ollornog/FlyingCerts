@@ -101,8 +101,10 @@ credentials work.
 
 No long-lived shared secret, and no login on the broker.
 
-1. You issue a **bootstrap token** on the broker for a named host. Single-use, short-lived, bound to
-   that name *and* to the request it will be redeemed with.
+1. You issue a **bootstrap token** on the broker for a named host. Single-use, short-lived, and bound
+   to that name and to the broker's own CA. It is *not* bound to the CSR: the agent generates its key
+   only when it redeems the token, so there is nothing to bind to yet. ADR-6 records that correction
+   rather than hiding it — a promise a protocol cannot keep is worse than one never made.
 2. The agent redeems it **once** and receives its own client certificate.
 3. From then on it authenticates by **mTLS** — nothing else is accepted.
 4. It renews that certificate well before expiry, so it cannot lock itself out.
@@ -123,6 +125,64 @@ certificate. Because it issues per host, "when does this host expire" has a real
 The broker hands one certificate *and its private key* to every host authorised for it. Simpler, and
 sometimes the only option — but the key travels, and every host holding it shares one fate. Expiry is
 then a property of the certificate, not of the host.
+
+## Running the broker
+
+`obtain` and `renew` need nothing but a timer. Serving agents is a separate command:
+
+```bash
+flying-certs-server -config config.yaml serve              # the mTLS endpoint
+flying-certs-server -config config.yaml token -agent web1  # one-time, prints the token
+flying-certs-server -config config.yaml agents             # who is enrolled, and until when
+flying-certs-server -config config.yaml check              # exits non-zero when something needs you
+```
+
+```
+AGENT  MODE   LAST SEEN  IDENTITY     CERTIFICATES
+web1   issue  2 h ago    27 days      1
+gw     share  9 days     4 days left  2
+```
+
+`check` is the one meant for cron or a monitoring probe. It reports four situations and exits
+non-zero for any of them, most urgent first:
+
+| | |
+|---|---|
+| **never enrolled** | configured, but has never collected an identity |
+| **silent** | has not been in touch for a week — its timer has probably stopped |
+| **lockout soon** | its identity runs out before it can plausibly renew itself |
+| **locked out** | its identity has expired; it now needs a new token by hand ([ADR-7](backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) |
+
+An agent you revoked on purpose is not reported as a problem.
+
+```bash
+flying-certs-server -config config.yaml revoke -agent web1 -reason "decommissioned"
+flying-certs-server -config config.yaml restore -agent web1
+```
+
+A revocation takes effect on that agent's next request, not at the next restart.
+
+## Backups
+
+The ACME account key and the agent CA cannot be recreated. Lose the first and no renewal will ever
+succeed again; lose the second and every agent is locked out with no way back.
+
+```bash
+flying-certs-server -config config.yaml backup -out /backup/broker-$(date +%F).tar.gz
+flying-certs-server -config config.yaml backup-info -in /backup/broker-2026-09-20.tar.gz
+flying-certs-server -config config.yaml restore-backup -in /backup/broker-2026-09-20.tar.gz
+```
+
+The archive holds private keys and says so. `-redact` leaves them out for a diagnosis copy — that
+copy is marked **not restorable**, and `restore-backup` refuses it by name rather than failing
+halfway through. `backup-info` answers "could I actually restore from this?" in a second and exits
+non-zero when the answer is no, which is the check worth running on a schedule.
+
+What makes this more than a `tar` wrapper is the test: it destroys the whole state, restores it,
+reopens everything from disk, and then **renews against the CA and delivers to an agent that
+enrolled before the disaster**. [ADR-16](backlog/ADR-16-sicherung.md) explains why — four separate
+backup failures in a comparable project, every one of them a backup that had been checked only for
+"the files came back".
 
 ## DNS providers
 
@@ -178,22 +238,20 @@ is broken, not the code — so the repeatability promise is demonstrated rather 
 
 **Early, and honest about it.** The interfaces are not stable and there is no usable release yet.
 
-Both sides exist and talk to each other. The broker obtains and keeps certificates
-(`register`, `obtain`, `renew`, `list`); agents enrol with a one-time token and then collect theirs
-over mTLS. Both delivery modes work, name authorisation is enforced, every decision is audited, and
-deployments verify themselves.
+All five milestones in [`backlog/`](backlog/) are done. The broker obtains and keeps certificates,
+serves them over mTLS, tracks who collected what and when each identity runs out, warns before a
+host locks itself out, and can be backed up and restored. Agents enrol with a one-time token,
+collect over mTLS, and verify that their reload actually took effect.
 
-**Proven end to end against a real CA.** The full path — create an account, obtain over DNS-01,
-renew naming the predecessor, ask the CA when it wants to be asked — runs against Pebble, Let's
-Encrypt's test CA, on every CI run. There it fails rather than skips when the test CA is missing,
-because a test that quietly skips is decoration.
-
-What is still open: **M-5** in [`backlog/`](backlog/) — the expiry tracking and the warning
-before an agent locks itself out. The parts it builds on are there; the reporting is not.
+**Proven end to end against a real CA.** Two runs against Pebble, Let's Encrypt's test CA, on every
+CI run: the issuance path (account, DNS-01, renewal naming its predecessor, ARI) and the recovery
+path (destroy everything, restore, renew, deliver). Both fail rather than skip when the test CA is
+missing, because a test that quietly skips is decoration.
 
 The design decisions were made **before** the code, by studying what comparable projects got wrong —
-each one is recorded as an ADR in [`backlog/`](backlog/) naming the mistake it avoids. If you
-disagree with one, the reasoning is written down and can be argued with.
+each one is recorded as an ADR in [`backlog/`](backlog/) naming the mistake it avoids. Where one
+turned out to be wrong, the ADR says so instead of being quietly rewritten. If you disagree with
+one, the reasoning is written down and can be argued with.
 
 MIT license.
 
