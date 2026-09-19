@@ -3,7 +3,7 @@ id: T-3
 type: Task
 title: "Der Sicherungs-Test spielt zurueck UND faehrt danach eine Erneuerung"
 status: offen
-milestone: M-1
+milestone: M-5
 tags: [betrieb, test]
 created: 2026-09-19
 ---
@@ -19,6 +19,9 @@ und nach dem Zurueckspielen schlug **jede** Erneuerung dauerhaft fehl
 
 Der gemeinsame Nenner: geprueft wurde „die Datei ist wieder da", nie „das System arbeitet danach
 weiter".
+
+*(Gehoert zum Betrieb, nicht zum Grundgeruest — deshalb an M-5 statt M-1. Eine Sicherung gibt es
+erst, wenn es auch Zustand gibt, der ueber Zertifikate hinausgeht.)*
 
 **Zu tun:** Der Test sichert, zerstoert den Zustand, spielt zurueck **und fuehrt anschliessend
 eine vollstaendige Erneuerung samt Ausgabe an einen Agenten durch**. Was als maskiert

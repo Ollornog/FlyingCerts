@@ -2,7 +2,7 @@
 id: T-4
 type: Task
 title: "Ende-zu-Ende-Lauf gegen eine Test-CA (Pebble)"
-status: offen
+status: erledigt
 milestone: M-1
 tags: [test, acme]
 created: 2026-09-19

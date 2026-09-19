@@ -2,6 +2,7 @@ package acme
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/go-acme/lego/v5/lego"
@@ -28,6 +29,11 @@ type ClientOptions struct {
 
 	// UserAgent identifies this program to the CA.
 	UserAgent string
+
+	// HTTPClient replaces the default transport. Needed for a CA behind a
+	// proxy, or one whose chain is not in the system trust store — a test CA,
+	// for instance.
+	HTTPClient *http.Client
 }
 
 // newClient builds a fresh lego client for a single piece of work, using the
@@ -59,6 +65,9 @@ func newClient(acct *Account, opts ClientOptions) (*lego.Client, error) {
 
 	if opts.UserAgent != "" {
 		config.UserAgent = opts.UserAgent
+	}
+	if opts.HTTPClient != nil {
+		config.HTTPClient = opts.HTTPClient
 	}
 
 	client, err := lego.NewClient(config)

@@ -2,7 +2,7 @@
 id: M-1
 type: Milestone
 title: Vermittler-Grundgeruest — Zertifikate holen und halten
-status: in-arbeit
+status: erledigt
 tags: [server, acme]
 created: 2026-09-19
 ---

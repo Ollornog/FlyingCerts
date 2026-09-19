@@ -2,7 +2,7 @@
 id: T-1
 type: Task
 title: "Gesundheitspruefung eines Zertifikats prueft das PAAR, nicht nur das Zertifikat"
-status: offen
+status: erledigt
 milestone: M-1
 tags: [sicherheit, test]
 created: 2026-09-19
@@ -24,3 +24,9 @@ Schluessel bereits intern und meldet `tls: private key does not match public key
 
 **Fertig, wenn:** Ein Test legt ein Zertifikat ohne Schluessel ab und weist nach, dass es als
 unvollstaendig gilt und zur Erneuerung ansteht statt als gesund durchzugehen.
+
+**Erledigt (2026-09-19):** `certstore.Save` speichert nur, was `certinfo.LoadPair` als gültiges
+Paar annimmt; `certstore.Load` prüft beim Lesen erneut. Ein Zertifikat ohne Schlüssel meldet
+ausdrücklich **nicht** „nicht gespeichert" — das würde einen Aufrufer dazu bringen, ein zweites
+zu holen, statt das halbfertige zu reparieren. Tests: `TestSaveRejectsMismatchedPair`,
+`TestChainWithoutKeyIsNotReportedAsMissing`, `TestLoadPairRejectsMismatch`.

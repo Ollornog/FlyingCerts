@@ -191,9 +191,10 @@ ist getestet — atomares Schreiben mit durchgesetzten Rechten, Zertifikatsunter
 ACME-Konto, das nie stillschweigend ersetzt wird, ARI-gesteuerte Erneuerung mit Rückfall auf einen
 Anteil der Laufzeit, serialisierte DNS-01-Challenge-Einträge und der Protokoll-Filter.
 
-**Noch nicht durchgängig gegen eine echte CA bewiesen.** Jedes Teil ist für sich getestet, aber ein
-vollständiger Lauf gegen eine Test-CA (Pebble) steht aus — bis der grün ist, gilt das hier als im
-Ernstfall unerprobt.
+**Durchgängig gegen eine echte CA bewiesen.** Der volle Weg — Konto anlegen, per DNS-01 holen, mit
+Nennung des Vorgängers erneuern, die CA nach ihrem Wunschzeitpunkt fragen — läuft bei jedem CI-Lauf
+gegen Pebble, die Test-CA von Let's Encrypt. Dort scheitert er, statt sich zu überspringen, wenn die
+Test-CA fehlt: ein Test, der still übersprungen wird, ist Dekoration.
 
 Was noch fehlt: die mTLS-Schnittstelle und der Agent, Hosts können ihre Zertifikate also noch nicht
 anfordern. Das sind die Meilensteine **M-2** bis **M-5** in [`backlog/`](../backlog/).

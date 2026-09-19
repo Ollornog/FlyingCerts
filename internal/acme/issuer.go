@@ -102,8 +102,11 @@ func NewIssuer(cfg IssuerConfig) (*Issuer, error) {
 	redacted := slog.New(NewRedactor(own.Handler(), cfg.Secrets...))
 	legolog.SetDefault(redacted)
 
+	// SkipPropagationCheck has to work on its own, not only alongside a wait:
+	// with split-horizon DNS the check is exactly what must go, while waiting
+	// may not be needed at all.
 	var opts []dns01.ChallengeOption
-	if cfg.DNS.PropagationWait > 0 {
+	if cfg.DNS.PropagationWait > 0 || cfg.DNS.SkipPropagationCheck {
 		opts = append(opts, dns01.PropagationWait(cfg.DNS.PropagationWait, cfg.DNS.SkipPropagationCheck))
 	}
 

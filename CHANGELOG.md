@@ -30,3 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configuration with strict parsing — an unknown key is an error, not a default.
 - `flying-certs-server` with `register`, `obtain`, `renew`, `list`, `providers`
   and `version`, plus a commented example configuration.
+- An end-to-end test against Pebble, Let's Encrypt's test CA, covering account
+  creation, issuance over DNS-01, renewal with the ARI `replaces` hint, and the
+  guarantee that no credential reaches the log. It runs in CI, where it fails
+  rather than skips if the test CA is missing.

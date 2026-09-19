@@ -183,8 +183,10 @@ is tested — atomic writes with enforced permissions, certificate inspection, a
 never silently replaced, ARI-driven renewal with a lifetime-fraction fallback, serialised DNS-01
 challenge records, and a logging redactor.
 
-**Not yet proven end to end against a real CA.** Every part is tested on its own, but a full run
-against a test CA (Pebble) is still open — until that is green, treat this as untried in anger.
+**Proven end to end against a real CA.** The full path — create an account, obtain over DNS-01,
+renew naming the predecessor, ask the CA when it wants to be asked — runs against Pebble, Let's
+Encrypt's test CA, on every CI run. There it fails rather than skips when the test CA is missing,
+because a test that quietly skips is decoration.
 
 What does not exist yet: the mTLS API and the agent, so hosts cannot ask for their certificates yet.
 Those are milestones **M-2** to **M-5** in [`backlog/`](backlog/).
