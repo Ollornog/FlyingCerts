@@ -49,7 +49,7 @@ func TestARIWinsWhenTheCAIsWilling(t *testing.T) {
 	now := time.Now()
 	cert := testCert(t, now.Add(-time.Hour), now.Add(80*24*time.Hour))
 	when := now
-	fetch := func(context.Context) (renewalInfoFetcher, error) {
+	fetch := func(context.Context) (RenewalInfoFetcher, error) {
 		return fakeARI{at: &when}, nil
 	}
 
@@ -70,7 +70,7 @@ func TestARIWinsWhenTheCAIsWilling(t *testing.T) {
 func TestARIDeferralIsRespected(t *testing.T) {
 	now := time.Now()
 	cert := testCert(t, now.Add(-80*24*time.Hour), now.Add(10*24*time.Hour))
-	fetch := func(context.Context) (renewalInfoFetcher, error) {
+	fetch := func(context.Context) (RenewalInfoFetcher, error) {
 		return fakeARI{at: nil}, nil // nil = not yet
 	}
 
@@ -94,7 +94,7 @@ func TestARIDeferralIsRespected(t *testing.T) {
 func TestFallsBackWhenCADoesNotSupportARI(t *testing.T) {
 	now := time.Now()
 	cert := testCert(t, now.Add(-80*24*time.Hour), now.Add(10*24*time.Hour))
-	fetch := func(context.Context) (renewalInfoFetcher, error) {
+	fetch := func(context.Context) (RenewalInfoFetcher, error) {
 		return nil, legoapi.ErrNoARI
 	}
 
@@ -112,7 +112,7 @@ func TestFallsBackWhenCADoesNotSupportARI(t *testing.T) {
 func TestFallsBackWhenARIFails(t *testing.T) {
 	now := time.Now()
 	cert := testCert(t, now.Add(-80*24*time.Hour), now.Add(10*24*time.Hour))
-	fetch := func(context.Context) (renewalInfoFetcher, error) {
+	fetch := func(context.Context) (RenewalInfoFetcher, error) {
 		return nil, errors.New("connection reset")
 	}
 
@@ -129,7 +129,7 @@ func TestExpiredIsDueRegardlessOfARI(t *testing.T) {
 	now := time.Now()
 	cert := testCert(t, now.Add(-90*24*time.Hour), now.Add(-time.Hour))
 	// Even if the CA were to defer, an expired certificate is due.
-	fetch := func(context.Context) (renewalInfoFetcher, error) {
+	fetch := func(context.Context) (RenewalInfoFetcher, error) {
 		return fakeARI{at: nil}, nil
 	}
 

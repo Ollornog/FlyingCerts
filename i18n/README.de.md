@@ -69,7 +69,35 @@ go build ./cmd/flying-certs-agent
 
 ## Schnelleinstieg
 
-Noch nicht — die Schnittstellen bewegen sich noch. Siehe [Stand](#stand).
+Konfigurationsdatei schreiben (kommentierte Vorlage:
+[`examples/config.yaml`](../examples/config.yaml)), dann:
+
+```bash
+export DNSUPDATE_NAMESERVER=ns.example.com:53      # Zugangsdaten des Anbieters,
+export DNSUPDATE_TSIG_SECRET=…                     # aus der Umgebung, nicht aus der Datei
+
+flying-certs-server -config config.yaml register   # einmalig: ACME-Konto anlegen
+flying-certs-server -config config.yaml obtain     # holen, was noch fehlt
+flying-certs-server -config config.yaml list       # nachsehen, was da ist
+```
+
+```
+NAME               DOMAINS                   EXPIRES     REMAINING
+gateway            gateway.example.com       2026-12-18  89 days left
+internal-wildcard  *.internal.example.com    2026-12-18  89 days left
+```
+
+`renew` läuft danach aus einem Timer. Es fragt die CA, wann sie gefragt werden
+möchte (ARI), und erneuert sonst nach zwei Dritteln der Laufzeit — derselbe
+Timer trägt also 90-Tage- wie 6-Tage-Zertifikate:
+
+```bash
+flying-certs-server -config config.yaml renew
+```
+
+Fang mit `directory: staging` an — dessen Zertifikate sind wertlos und die
+Rate-Limits nachsichtig, genau richtig, solange du herausfindest, ob deine
+DNS-Zugangsdaten stimmen.
 
 ## Wie ein Host dazukommt
 
@@ -158,14 +186,17 @@ wird, ist kaputt — nicht der Code. So ist die Wiederholbarkeit vorgeführt sta
 **Früh, und ehrlich darüber.** Die Schnittstellen sind nicht stabil, ein brauchbares Release gibt es
 noch nicht.
 
-Was da ist, alles getestet: atomares Schreiben mit durchgesetzten Rechten · die
-Zertifikatsuntersuchung (Paarprüfung, Restlaufzeit, Erneuerungszeitpunkt) · das ACME-Konto, das
-geladen und nie stillschweigend ersetzt wird · die Erneuerungsentscheidung, zuerst nach ARI und
-ersatzweise nach einem Anteil der Laufzeit · die Serialisierung konkurrierender
-DNS-01-Challenge-Einträge.
+Der Vermittler läuft als Satz von Befehlen: `register`, `obtain`, `renew`, `list`. Alles darunter
+ist getestet — atomares Schreiben mit durchgesetzten Rechten, Zertifikatsuntersuchung, ein
+ACME-Konto, das nie stillschweigend ersetzt wird, ARI-gesteuerte Erneuerung mit Rückfall auf einen
+Anteil der Laufzeit, serialisierte DNS-01-Challenge-Einträge und der Protokoll-Filter.
 
-Was noch fehlt: das Zertifikat wirklich durchgängig zu holen, die mTLS-Schnittstelle und der Agent.
-Das sind die Meilensteine **M-1** bis **M-5** in [`backlog/`](../backlog/).
+**Noch nicht durchgängig gegen eine echte CA bewiesen.** Jedes Teil ist für sich getestet, aber ein
+vollständiger Lauf gegen eine Test-CA (Pebble) steht aus — bis der grün ist, gilt das hier als im
+Ernstfall unerprobt.
+
+Was noch fehlt: die mTLS-Schnittstelle und der Agent, Hosts können ihre Zertifikate also noch nicht
+anfordern. Das sind die Meilensteine **M-2** bis **M-5** in [`backlog/`](../backlog/).
 
 Die Architekturentscheidungen fielen **vor** dem Code, aus der Untersuchung dessen, was vergleichbare
 Projekte falsch gemacht haben — jede ist als ADR in [`backlog/`](../backlog/) festgehalten und nennt

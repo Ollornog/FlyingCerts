@@ -25,3 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exempt from rate limits.
 - A curated set of seven DNS providers, including `rfc2136` and `acmedns` so no
   provider is a dead end.
+- A certificate store: chain, key and metadata per certificate, written
+  atomically and never stored as a mismatched pair.
+- Configuration with strict parsing — an unknown key is an error, not a default.
+- `flying-certs-server` with `register`, `obtain`, `renew`, `list`, `providers`
+  and `version`, plus a commented example configuration.

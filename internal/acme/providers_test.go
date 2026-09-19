@@ -1,6 +1,7 @@
 package acme
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"testing"
@@ -94,5 +95,74 @@ func TestWildcardAndBaseShareOneChallengeTarget(t *testing.T) {
 
 	if challengeTarget([]string{"*.example.com"}) != challengeTarget([]string{"example.com"}) {
 		t.Error("a wildcard and its base name map to different locks — they share one record")
+	}
+}
+
+// fakeProvider records what it was asked to publish, without touching DNS.
+type fakeProvider struct{ presented []string }
+
+// Note the context arguments: lego v5 added them to challenge.Provider, so a
+// solver written against v4 does not satisfy the interface any more.
+func (f *fakeProvider) Present(_ context.Context, domain, token, keyAuth string) error {
+	f.presented = append(f.presented, domain)
+	return nil
+}
+
+func (f *fakeProvider) CleanUp(_ context.Context, domain, token, keyAuth string) error {
+	return nil
+}
+
+// An injected provider must bypass the compiled-in list entirely — that is
+// what makes the whole path testable and lets someone embed a provider we do
+// not ship.
+func TestInjectedProviderBypassesTheList(t *testing.T) {
+	store, err := NewAccountStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewAccountStore: %v", err)
+	}
+	iss, err := NewIssuer(IssuerConfig{
+		Accounts:    store,
+		Client:      ClientOptions{DirectoryURL: "https://ca.example.com/directory"},
+		DNSProvider: "something-not-compiled-in",
+		Provider:    &fakeProvider{},
+	})
+	if err != nil {
+		t.Fatalf("an injected provider was rejected: %v", err)
+	}
+	if iss.Provider() != "something-not-compiled-in" {
+		t.Errorf("Provider() = %q — the name stays as a label", iss.Provider())
+	}
+}
+
+// Obtain must stop at the missing account rather than reach for the network.
+func TestObtainWithoutAccountFailsClearly(t *testing.T) {
+	store, _ := NewAccountStore(t.TempDir())
+	iss, err := NewIssuer(IssuerConfig{
+		Accounts:    store,
+		Client:      ClientOptions{DirectoryURL: "https://ca.invalid/directory"},
+		DNSProvider: "rfc2136",
+		Provider:    &fakeProvider{},
+	})
+	if err != nil {
+		t.Fatalf("NewIssuer: %v", err)
+	}
+	_, err = iss.Obtain(context.Background(), Request{Domains: []string{"host.example.com"}})
+	if err == nil {
+		t.Fatal("Obtain succeeded without an account")
+	}
+	if !strings.Contains(err.Error(), "account") {
+		t.Errorf("error should point at the missing account: %v", err)
+	}
+}
+
+func TestObtainRejectsEmptyRequest(t *testing.T) {
+	store, _ := NewAccountStore(t.TempDir())
+	iss, _ := NewIssuer(IssuerConfig{
+		Accounts:    store,
+		Client:      ClientOptions{DirectoryURL: "https://ca.example.com/directory"},
+		DNSProvider: "rfc2136",
+	})
+	if _, err := iss.Obtain(context.Background(), Request{}); err == nil {
+		t.Error("a request without domains was accepted")
 	}
 }

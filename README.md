@@ -67,7 +67,35 @@ go build ./cmd/flying-certs-agent
 
 ## Quickstart
 
-Not yet — the interfaces are still moving. See [Status](#status).
+Write a configuration file (there is a commented example in
+[`examples/config.yaml`](examples/config.yaml)), then:
+
+```bash
+export DNSUPDATE_NAMESERVER=ns.example.com:53      # your provider's credentials,
+export DNSUPDATE_TSIG_SECRET=…                     # from the environment, not the file
+
+flying-certs-server -config config.yaml register   # once: create the ACME account
+flying-certs-server -config config.yaml obtain     # fetch what is not there yet
+flying-certs-server -config config.yaml list       # see what you have
+```
+
+```
+NAME               DOMAINS                   EXPIRES     REMAINING
+gateway            gateway.example.com       2026-12-18  89 days left
+internal-wildcard  *.internal.example.com    2026-12-18  89 days left
+```
+
+Then run `renew` from a timer. It asks the CA when it would prefer to be asked
+(ARI) and otherwise renews after two thirds of the lifetime, so the same timer
+works for 90-day and for 6-day certificates:
+
+```bash
+flying-certs-server -config config.yaml renew
+```
+
+Start against `directory: staging` — its certificates are worthless and its rate
+limits forgiving, which is what you want while finding out whether your DNS
+credentials work.
 
 ## How a host joins
 
@@ -150,13 +178,16 @@ is broken, not the code — so the repeatability promise is demonstrated rather 
 
 **Early, and honest about it.** The interfaces are not stable and there is no usable release yet.
 
-What exists, all of it tested: atomic file writing with enforced permissions · certificate
-inspection (pair validation, remaining lifetime, renewal timing) · the ACME account, which is loaded
-and never silently replaced · the renewal decision, ARI first and a fraction of the lifetime as
-fallback · serialisation of competing DNS-01 challenge records.
+The broker works as a set of commands: `register`, `obtain`, `renew`, `list`. Everything under it
+is tested — atomic writes with enforced permissions, certificate inspection, an ACME account that is
+never silently replaced, ARI-driven renewal with a lifetime-fraction fallback, serialised DNS-01
+challenge records, and a logging redactor.
 
-What does not exist yet: actually obtaining a certificate end to end, the mTLS API, and the agent.
-Those are milestones **M-1** to **M-5** in [`backlog/`](backlog/).
+**Not yet proven end to end against a real CA.** Every part is tested on its own, but a full run
+against a test CA (Pebble) is still open — until that is green, treat this as untried in anger.
+
+What does not exist yet: the mTLS API and the agent, so hosts cannot ask for their certificates yet.
+Those are milestones **M-2** to **M-5** in [`backlog/`](backlog/).
 
 The design decisions were made **before** the code, by studying what comparable projects got wrong —
 each one is recorded as an ADR in [`backlog/`](backlog/) naming the mistake it avoids. If you

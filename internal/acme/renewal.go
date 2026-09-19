@@ -39,9 +39,10 @@ const (
 	SourceExpired RenewalSource = "expired"
 )
 
-// renewalInfoFetcher is the slice of lego we need, kept small so the decision
-// logic can be tested without a CA.
-type renewalInfoFetcher interface {
+// RenewalInfoFetcher is the slice of lego we need, kept small so the decision
+// logic can be tested without a CA — and exported so callers can hand in the
+// real thing.
+type RenewalInfoFetcher interface {
 	ShouldRenewAt(now time.Time, willingToSleep time.Duration) *time.Time
 }
 
@@ -56,7 +57,7 @@ type renewalInfoFetcher interface {
 // Where ARI is unavailable, a fraction of the lifetime is used instead. Never a
 // fixed number of days — that would be nonsense for a six-day certificate, and
 // those are becoming normal.
-func DecideRenewal(ctx context.Context, fetch func(context.Context) (renewalInfoFetcher, error),
+func DecideRenewal(ctx context.Context, fetch func(context.Context) (RenewalInfoFetcher, error),
 	cert *x509.Certificate, now time.Time, willingToSleep time.Duration) RenewalDecision {
 
 	// An expired certificate needs no advice from anyone.

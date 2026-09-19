@@ -7,7 +7,7 @@ Konventionen: [README-KONVENTION.md](README-KONVENTION.md).
 
 ## Meilensteine
 
-* ☐ **[M-1](M-1-vermittler-grundgeruest.md)** Vermittler-Grundgeruest — Zertifikate holen und halten — 0/2 erledigt
+* ◐ **[M-1](M-1-vermittler-grundgeruest.md)** Vermittler-Grundgeruest — Zertifikate holen und halten — 0/3 erledigt
 * ☐ **[M-2](M-2-bootstrap-und-mtls.md)** Aufnahme eines Agenten — Bootstrap-Token und mTLS — 0/1 erledigt
 * ☐ **[M-3](M-3-ausstellung-je-agent.md)** Modus `issue` — je Agent ein eigenes Zertifikat — noch keine Aufgaben
 * ☐ **[M-4](M-4-agent.md)** Agent — anfordern, ablegen, neu laden — noch keine Aufgaben
@@ -18,6 +18,7 @@ Konventionen: [README-KONVENTION.md](README-KONVENTION.md).
 * ☐ **[T-1](T-1-gesundheit-prueft-paar.md)** Gesundheitspruefung eines Zertifikats prueft das PAAR, nicht nur das Zertifikat · M-1
 * ☐ **[T-2](T-2-ratenbegrenzung-nach-pruefung.md)** Ratenbegrenzung erst nach der Identitaetspruefung, nie auf ungepruefte Eingaben · M-2
 * ☐ **[T-3](T-3-sicherung-faehrt-erneuerung.md)** Der Sicherungs-Test spielt zurueck UND faehrt danach eine Erneuerung · M-1
+* ☐ **[T-4](T-4-ende-zu-ende-gegen-pebble.md)** Ende-zu-Ende-Lauf gegen eine Test-CA (Pebble) · M-1
 
 ## Entscheidungen (ADR)
 

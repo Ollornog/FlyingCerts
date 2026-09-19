@@ -1,0 +1,55 @@
+# flying-certs broker configuration.
+#
+# Unknown keys are rejected rather than ignored: a typo must not leave a
+# setting quietly at its default.
+
+acme:
+  # "staging" or "production" for Let's Encrypt, or any ACME directory URL.
+  # Start with staging — its rate limits are generous and its certificates
+  # are worthless, which is exactly what you want while trying things out.
+  directory: staging
+  email: admin@example.com
+
+  # How long to wait for the CA to finish an order. lego's own default is 30s,
+  # which some CAs exceed — and when that happens the CA still issues the
+  # certificate while the client has stopped listening, so every retry pays for
+  # one nobody collects.
+  finalize_timeout: 90s
+
+storage:
+  account_dir: /var/lib/flying-certs/account
+  certificate_dir: /var/lib/flying-certs/certificates
+
+dns:
+  # One of: acmedns, cloudflare, desec, digitalocean, hetzner, rfc2136, route53
+  # (`flying-certs-server providers` prints the list of this build).
+  provider: rfc2136
+
+  # Credentials come from the environment, following lego's convention — that
+  # keeps them out of this file, which is the thing people paste into issues.
+  # For rfc2136: DNSUPDATE_NAMESERVER, DNSUPDATE_TSIG_KEY,
+  # DNSUPDATE_TSIG_SECRET, DNSUPDATE_TSIG_ALGORITHM.
+  #
+  # Name them here and their values are stripped from every log line.
+  secret_env:
+    - DNSUPDATE_TSIG_SECRET
+
+  # A fixed wait beats a clever propagation check. Cert Warden built the clever
+  # one, found it unreliable across providers, and went back to this.
+  propagation_wait: 30s
+
+  # Set this with split-horizon DNS, where the nameserver this host can reach
+  # is not the one the CA will ask.
+  skip_propagation_check: false
+
+certificates:
+  - name: gateway
+    domains:
+      - gateway.example.com
+
+  - name: internal-wildcard
+    domains:
+      - "*.internal.example.com"
+    # Optional: ask the CA for a specific issuance profile, e.g. Let's
+    # Encrypt's short-lived certificates.
+    # profile: shortlived

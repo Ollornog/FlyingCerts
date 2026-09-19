@@ -11,6 +11,7 @@ import (
 	legoapi "github.com/go-acme/lego/v5/acme/api"
 	"github.com/go-acme/lego/v5/certcrypto"
 	"github.com/go-acme/lego/v5/certificate"
+	"github.com/go-acme/lego/v5/challenge"
 	"github.com/go-acme/lego/v5/challenge/dns01"
 	legolog "github.com/go-acme/lego/v5/log"
 )
@@ -25,6 +26,10 @@ type Issuer struct {
 	// dnsProvider names the lego DNS provider, e.g. "cloudflare". Its
 	// credentials come from the environment, as lego expects.
 	dnsProvider string
+	// provider, when set, is used instead of looking dnsProvider up. It lets
+	// tests drive the whole path without a real DNS account, and lets someone
+	// embedding this package bring a provider we do not compile in.
+	provider challenge.Provider
 	// dnsOptions tune propagation behaviour (see DNSOptions).
 	dnsOptions []dns01.ChallengeOption
 
@@ -62,6 +67,10 @@ type IssuerConfig struct {
 
 	// Log receives our own messages. Nil means slog's default.
 	Log *slog.Logger
+
+	// Provider overrides DNSProvider with a ready-made solver. DNSProvider is
+	// then only a label for messages.
+	Provider challenge.Provider
 }
 
 // NewIssuer builds an Issuer and installs the logging redactor.
@@ -79,7 +88,7 @@ func NewIssuer(cfg IssuerConfig) (*Issuer, error) {
 		return nil, fmt.Errorf("no DNS provider named: DNS-01 is the only challenge this tool uses")
 	}
 	// Fail at construction, not at the first renewal at four in the morning.
-	if _, ok := providers[cfg.DNSProvider]; !ok {
+	if _, ok := providers[cfg.DNSProvider]; !ok && cfg.Provider == nil {
 		return nil, fmt.Errorf("DNS provider %q is not compiled into this build; available: %v",
 			cfg.DNSProvider, SupportedProviders())
 	}
@@ -103,6 +112,7 @@ func NewIssuer(cfg IssuerConfig) (*Issuer, error) {
 		opts:        cfg.Client,
 		zones:       NewZoneLock(),
 		dnsProvider: cfg.DNSProvider,
+		provider:    cfg.Provider,
 		dnsOptions:  opts,
 		log:         redacted,
 	}, nil
@@ -159,9 +169,12 @@ func (i *Issuer) Obtain(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 
-	provider, err := newDNSProvider(i.dnsProvider)
-	if err != nil {
-		return nil, err
+	provider := i.provider
+	if provider == nil {
+		var err error
+		if provider, err = newDNSProvider(i.dnsProvider); err != nil {
+			return nil, err
+		}
 	}
 	if err := client.Challenge.SetDNS01Provider(provider, i.dnsOptions...); err != nil {
 		return nil, fmt.Errorf("install DNS-01 solver: %w", err)
@@ -222,3 +235,24 @@ func challengeTarget(domains []string) string {
 
 // Provider reports the configured DNS provider name.
 func (i *Issuer) Provider() string { return i.dnsProvider }
+
+// RenewalInfo asks the CA when it would prefer this certificate to be renewed.
+//
+// It returns legoapi.ErrNoARI when the CA does not offer renewal information,
+// which callers treat as "fall back to our own arithmetic" rather than as a
+// failure — plenty of CAs do not implement RFC 9773 yet.
+func (i *Issuer) RenewalInfo(ctx context.Context, cert *x509.Certificate) (RenewalInfoFetcher, error) {
+	acct, err := i.accounts.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load ACME account: %w", err)
+	}
+	client, err := newClient(acct, i.opts)
+	if err != nil {
+		return nil, err
+	}
+	info, err := client.Certificate.GetRenewalInfo(ctx, cert)
+	if err != nil {
+		return nil, err
+	}
+	return info, nil
+}
