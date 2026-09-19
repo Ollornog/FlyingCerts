@@ -5,6 +5,27 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Hardened systemd units for both sides in `examples/systemd/`, plus a
+  sudoers snippet that lets the agent reload exactly one service instead of
+  running as root. The README says what they are for: the agent executes a
+  command from its configuration, so whoever can edit that file runs code as
+  the agent's user — the answer is to fence that in, not to pretend it is
+  not there.
+- A "Running it safely" section in both READMEs, naming the two residual
+  risks plainly: the device key is a long-lived secret on disk, and a backup
+  archive holds private keys.
+
+### Fixed
+- The end-to-end tests no longer fail on a race inside Pebble. It finalises
+  an order in a goroutine and adds it to its by-serial index only afterwards,
+  so a client that renews immediately — naming the predecessor via ARI
+  `replaces`, which is what a correct client does — can arrive in between.
+  The retry matches that one message from that one test server and nothing
+  else; Boulder has no such window, so no production code changed.
+
 ## [0.1.1] - 2026-09-20
 
 ### Fixed

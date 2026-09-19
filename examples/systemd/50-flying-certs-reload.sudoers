@@ -1,0 +1,16 @@
+# Let the agent reload one service, and only that one.
+#
+# Install as /etc/sudoers.d/50-flying-certs-reload, mode 0440, and check it
+# with `visudo -c` before trusting it.
+#
+# This is what lets the agent run as an unprivileged user while still being
+# able to reload a service. The alternative — running the whole agent as root
+# so it can call systemctl — hands root to whoever can edit agent.yaml.
+#
+# Name the exact command. A wildcard here (`/bin/systemctl *`) would give the
+# agent the ability to stop, mask or start anything, which is most of root.
+
+flying-certs ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx.service
+
+# In agent.yaml then:
+#   reload: [sudo, -n, /usr/bin/systemctl, reload, nginx.service]

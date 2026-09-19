@@ -103,7 +103,17 @@ func TestEndToEndAgainstPebble(t *testing.T) {
 	// --- 4. renewal names its predecessor ---------------------------------
 	// Without ReplacesCertID the rate-limit exemption in RFC 9773 §5 is lost
 	// silently, and nobody notices until the limit bites.
-	second, err := issuer.Obtain(ctx, Request{Domains: []string{domain}, Replaces: pair.Leaf})
+	//
+	// Wrapped because Pebble indexes a finished order in a goroutine and a
+	// correct client can arrive before it has (see OrderIndexRace). The wrap
+	// waits out that one message and nothing else — every other error still
+	// fails the test on the first try.
+	var second *Result
+	err = pebbletest.RetryPastOrderIndexRace(t, func() error {
+		var err error
+		second, err = issuer.Obtain(ctx, Request{Domains: []string{domain}, Replaces: pair.Leaf})
+		return err
+	})
 	if err != nil {
 		t.Fatalf("renewal with a replaces hint failed: %v", err)
 	}

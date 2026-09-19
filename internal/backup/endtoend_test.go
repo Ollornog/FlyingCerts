@@ -246,9 +246,17 @@ func TestRestoredBrokerRenewsAndDelivers(t *testing.T) {
 	if !restoredAccounts.Exists() {
 		t.Fatal("the ACME account did not come back — every renewal from here on would fail")
 	}
-	renewed, err := restoredIssuer.Obtain(ctx, acme.Request{
-		Domains:  []string{domain},
-		Replaces: originalPair.Leaf,
+	// Same wrap as in the issuer suite: Pebble may not have indexed the
+	// predecessor order yet. Anything other than that one message fails here
+	// immediately, which is the point of this test.
+	var renewed *acme.Result
+	err = pebbletest.RetryPastOrderIndexRace(t, func() error {
+		var err error
+		renewed, err = restoredIssuer.Obtain(ctx, acme.Request{
+			Domains:  []string{domain},
+			Replaces: originalPair.Leaf,
+		})
+		return err
 	})
 	if err != nil {
 		t.Fatalf("renewal after the restore failed — this is certmate#410: %v", err)

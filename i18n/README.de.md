@@ -308,6 +308,39 @@ der sich vor dem Ausfall eingeschrieben hat**. [ADR-16](../backlog/ADR-16-sicher
 warum — vier getrennte Sicherungsausfälle in einem vergleichbaren Projekt, jeder davon eine
 Sicherung, die nur auf „die Dateien sind wieder da" geprüft worden war.
 
+## Sicher betreiben
+
+Das Riskante an diesem Programm ist nicht die Kryptografie. Es **führt einen Befehl aus, den Sie
+konfiguriert haben** (`reload:`), und schreibt Dateien dorthin, wohin Sie es heissen — wer also
+`agent.yaml` bearbeiten kann, führt Code als der Benutzer des Agenten aus. Genau dafür gibt es das
+Werkzeug; die Antwort ist, das einzuzäunen, nicht es zu entfernen.
+
+Gehärtete Units für beide Seiten liegen in [`examples/systemd/`](../examples/systemd/). Worauf es
+ankommt:
+
+- **Den Agenten nicht als root laufen lassen.** Er muss Zertifikatsdateien schreiben und ein
+  Neuladen auslösen — beides braucht kein root. Eigener Benutzer, `key_mode: 0640` und eine
+  `group:`, die der Dienst lesen kann.
+- **Genau einen Dienst neu laden lassen.** Eine sudoers-Zeile mit dem vollständigen Befehl
+  (`NOPASSWD: /usr/bin/systemctl reload nginx.service`) — nie mit Platzhalter, sonst darf der
+  Agent beliebige Dienste anhalten oder maskieren.
+- **`ProtectSystem=strict` plus `ReadWritePaths`** für nur das Zertifikatsverzeichnis, und
+  `InaccessiblePaths` für die Schlüssel anderer Dienste.
+- **Das eigene Ergebnis prüfen**, nicht dem Beispiel vertrauen: `systemd-analyze security <unit>`
+  bewertet von 0.0 (dicht) bis 10.0 (offen). Bricht eine Direktive Ihren Aufbau, lockern Sie genau
+  diese und beobachten die Zahl — nicht den Block löschen.
+
+Auf der Vermittler-Seite enthält das Zustandsverzeichnis die beiden Dinge, die sich nicht neu
+erzeugen lassen: den ACME-Kontoschlüssel und den Schlüssel der Agenten-CA. Es ist der einzige Pfad,
+in den seine Unit schreiben darf, und es ist das, wofür es die [Sicherung](#sicherungen) gibt.
+
+Zwei Dinge, die man wissen statt beheben sollte:
+
+- **Der Geräteschlüssel ist ein langlebiges Geheimnis auf dem Host**, abgelegt mit `0600`. Ein TPM
+  wäre stärker und kann später kommen; schwächer als das Zertifikat daneben ist er nicht.
+- **Ein Sicherungsarchiv enthält private Schlüssel.** Es sagt das beim Schreiben. Wer die Datei
+  hat, hat den Vermittler.
+
 ## DNS-Anbieter
 
 DNS-01 ist die einzige Challenge, die dieses Werkzeug nutzt — es muss also einen TXT-Eintrag

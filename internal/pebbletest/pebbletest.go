@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,4 +124,50 @@ func Require(t *testing.T) {
 			DirectoryURL)
 	}
 	t.Skipf("Pebble not reachable at %s — see the package comment for how to start it", DirectoryURL)
+}
+
+// OrderIndexRace is the message Pebble returns when a renewal names a
+// predecessor it has not finished indexing.
+//
+// It is a race inside the test server, not a client error and not something
+// a real CA does. Pebble finalises an order in a goroutine and registers it
+// in its by-serial index only afterwards (wfe/wfe.go):
+//
+//	go func() {
+//	    wfe.ca.CompleteOrder(existingOrder)                  // certificate is fetchable
+//	    err := wfe.db.AddOrderByIssuedSerial(existingOrder)  // only now findable
+//	}()
+//
+// A client that collects the certificate and immediately renews it — naming
+// it via ARI `replaces`, which is exactly what a correct client should do —
+// can arrive between those two lines. Boulder has no such window, so nothing
+// about this reaches production code.
+const OrderIndexRace = "could not find order resulting in the given certificate serial number"
+
+// IsOrderIndexRace reports whether an error is that race.
+func IsOrderIndexRace(err error) bool {
+	return err != nil && strings.Contains(err.Error(), OrderIndexRace)
+}
+
+// RetryPastOrderIndexRace runs fn, retrying only while Pebble is still
+// indexing the predecessor order.
+//
+// Deliberately narrow: it matches one message from one test server and gives
+// up quickly. A blanket retry would hide real failures, which is the whole
+// objection to retrying in tests — this one waits out a known defect in the
+// environment and lets everything else through untouched.
+func RetryPastOrderIndexRace(t *testing.T, fn func() error) error {
+	t.Helper()
+	const attempts = 10
+	var err error
+	for i := range attempts {
+		if err = fn(); !IsOrderIndexRace(err) {
+			return err
+		}
+		t.Logf("Pebble has not indexed the predecessor order yet (attempt %d/%d); "+
+			"this is the test server's race, not a failure of the code under test",
+			i+1, attempts)
+		time.Sleep(200 * time.Millisecond)
+	}
+	return err
 }

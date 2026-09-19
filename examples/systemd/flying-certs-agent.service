@@ -1,0 +1,76 @@
+# The agent, sandboxed.
+#
+# The dangerous thing about this program is not its cryptography: it runs a
+# command you configured (`reload:`) and writes files where you told it to.
+# Anyone who can edit its configuration can therefore run code as whatever
+# user this unit uses. That is the point of the program, so the answer is not
+# to remove the capability but to fence it in.
+#
+# Check your own result rather than trusting this file:
+#
+#   systemd-analyze security flying-certs-agent.service
+#
+# It scores 0.0 (locked down) to 10.0 (wide open). If a directive below breaks
+# your setup, loosen that one and see what the number does — do not delete the
+# block.
+
+[Unit]
+Description=FlyingCerts agent
+Documentation=https://github.com/Ollornog/FlyingCerts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/flying-certs-agent -config /etc/flying-certs/agent.yaml run
+
+# --- who it runs as ---------------------------------------------------------
+# Not root. The agent needs to write the certificate files and to trigger a
+# reload; neither requires being root, and see the reload note below.
+User=flying-certs
+Group=flying-certs
+
+# --- what it may do ---------------------------------------------------------
+NoNewPrivileges=yes
+# Nothing dropped here, because nothing is needed. If your setup genuinely
+# requires a capability, name that one instead of removing the line.
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+
+# --- what it may see --------------------------------------------------------
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+
+# Exactly the paths it writes: its own state, and the certificates it deploys.
+# Everything else on the filesystem stays read-only.
+StateDirectory=flying-certs-agent
+ReadWritePaths=/etc/ssl/gateway
+
+# Other services' keys are none of its business, even though it runs as a
+# user that might otherwise be able to read some of them.
+InaccessiblePaths=-/etc/letsencrypt -/var/lib/acme
+
+# --- where it may connect ---------------------------------------------------
+# The broker, and nothing else. Narrow this to the broker's address if it is
+# fixed; IPAddressAllow/Deny take addresses, not names.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+PrivateUsers=yes
+
+[Install]
+WantedBy=multi-user.target

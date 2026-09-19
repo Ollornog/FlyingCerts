@@ -1,0 +1,18 @@
+# Runs the agent regularly. Nothing happens when nothing changed — no write,
+# no reload — so a short interval costs almost nothing and keeps the window
+# small between a renewed certificate and the service actually serving it.
+
+[Unit]
+Description=Collect certificates from the FlyingCerts broker
+Documentation=https://github.com/Ollornog/FlyingCerts
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+# Without this every host in the fleet wakes at the same second and the
+# broker sees the whole flock at once.
+RandomizedDelaySec=10min
+Persistent=yes
+
+[Install]
+WantedBy=timers.target

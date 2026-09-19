@@ -294,6 +294,39 @@ enrolled before the disaster**. [ADR-16](backlog/ADR-16-sicherung.md) explains w
 backup failures in a comparable project, every one of them a backup that had been checked only for
 "the files came back".
 
+## Running it safely
+
+The risky part of this program is not its cryptography. It **runs a command you configured**
+(`reload:`) and writes files where you tell it to — so whoever can edit `agent.yaml` can run code
+as whatever user the agent runs as. That capability is the point of the tool; the answer is to
+fence it in rather than remove it.
+
+There are hardened units in [`examples/systemd/`](examples/systemd/) for both sides. The parts
+that matter:
+
+- **Do not run the agent as root.** It needs to write certificate files and trigger a reload,
+  and neither requires root. Give it its own user, `key_mode: 0640` and a `group:` the service
+  can read.
+- **Let it reload exactly one service.** A sudoers line naming the full command
+  (`NOPASSWD: /usr/bin/systemctl reload nginx.service`) — never a wildcard, which would let it
+  stop or mask anything.
+- **`ProtectSystem=strict` plus `ReadWritePaths`** for just the certificate directory, and
+  `InaccessiblePaths` for other services' keys.
+- **Check your own result**, do not trust the example: `systemd-analyze security <unit>` scores
+  0.0 (locked down) to 10.0 (wide open). If a directive breaks your setup, loosen that one and
+  watch the number — do not delete the block.
+
+On the broker side, the state directory holds the two things that cannot be recreated — the ACME
+account key and the agent CA's key. It is the only path its unit may write to, and it is what the
+[backup](#backups) exists for.
+
+Two more things worth knowing rather than fixing:
+
+- **The device key is a long-lived secret on the host**, stored `0600`. A TPM would be stronger
+  and may come later; it is not weaker than the certificate sitting next to it.
+- **A backup archive contains private keys.** It says so when written. Whoever holds the file
+  holds the broker.
+
 ## DNS providers
 
 DNS-01 is the only challenge this tool uses, so it needs to write a TXT record. Compiled in:
