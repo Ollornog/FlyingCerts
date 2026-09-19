@@ -19,3 +19,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renewal decision driven by ARI where the CA offers it, falling back to the
   lifetime fraction where it does not.
 - Serialisation of orders competing for the same DNS-01 challenge record.
+- A logging redactor that removes known secrets from anything the ACME library
+  writes, by value as well as by attribute name.
