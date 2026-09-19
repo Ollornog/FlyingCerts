@@ -18,6 +18,7 @@ import (
 	"github.com/Ollornog/flying-certs/internal/certstore"
 	"github.com/Ollornog/flying-certs/internal/config"
 	"github.com/Ollornog/flying-certs/internal/enroll"
+	"github.com/Ollornog/flying-certs/internal/lifetime"
 	"github.com/Ollornog/flying-certs/internal/registry"
 	"github.com/Ollornog/flying-certs/internal/version"
 )
@@ -59,9 +60,10 @@ func openBroker(cfg *config.Config, certs *certstore.Store) (*brokerParts, error
 	agents := make([]registry.Agent, 0, len(cfg.Agents))
 	for _, a := range cfg.Agents {
 		agents = append(agents, registry.Agent{
-			Name:         a.Name,
-			Certificates: a.Certificates,
-			Mode:         registry.DeliveryMode(a.Mode),
+			Name:             a.Name,
+			Certificates:     a.Certificates,
+			Mode:             registry.DeliveryMode(a.Mode),
+			IdentityLifetime: a.IdentityLifetime,
 		})
 	}
 	reg, err := registry.New(agents,
@@ -272,12 +274,13 @@ func cmdAgents(cfg *config.Config, certs *certstore.Store) error {
 
 	now := time.Now()
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "AGENT\tMODE\tLAST SEEN\tIDENTITY\tCERTIFICATES")
+	fmt.Fprintln(w, "AGENT\tMODE\tLAST SEEN\tLIFETIME\tIDENTITY\tCERTIFICATES")
 	for _, a := range agents {
 		st := parts.agents.StateOf(a.Name)
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\n",
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\n",
 			a.Name, a.Mode, describeSeen(st.LastSeen, now),
-			describeIdentity(st, now), len(a.Certificates))
+			describeConfiguredLifetime(a, cfg.Broker.IdentityLifetime),
+			describeIdentity(a, st, now), len(a.Certificates))
 	}
 	if err := w.Flush(); err != nil {
 		return err
@@ -316,8 +319,21 @@ func cmdCheck(cfg *config.Config, certs *certstore.Store) error {
 		}
 	}
 
-	if len(findings) == 0 && len(certConcerns) == 0 && len(broken) == 0 {
-		fmt.Printf("all %d agent(s) and %d certificate(s) in order\n", len(parts.agents.Agents()), len(metas))
+	// Findings that need action decide the exit code; the rest are printed
+	// and ignored by it. A standing state that fails every run teaches people
+	// to stop reading the output.
+	actionable := 0
+	for _, f := range findings {
+		if f.Concern.NeedsAction() {
+			actionable++
+		}
+	}
+	if actionable == 0 && len(certConcerns) == 0 && len(broken) == 0 {
+		fmt.Printf("all %d agent(s) and %d certificate(s) in order\n",
+			len(parts.agents.Agents()), len(metas))
+		for _, f := range findings {
+			fmt.Printf("  note: %s — %s\n", f.Agent, f.Detail)
+		}
 		return nil
 	}
 
@@ -330,7 +346,7 @@ func cmdCheck(cfg *config.Config, certs *certstore.Store) error {
 	for _, name := range broken {
 		fmt.Printf("%-24s %-26s %s\n", name, "unreadable", "check the stored files")
 	}
-	return fmt.Errorf("%d finding(s)", len(findings)+len(certConcerns)+len(broken))
+	return fmt.Errorf("%d finding(s)", actionable+len(certConcerns)+len(broken))
 }
 
 func describeSeen(t, now time.Time) string {
@@ -340,7 +356,22 @@ func describeSeen(t, now time.Time) string {
 	return describeAgo(now.Sub(t))
 }
 
-func describeIdentity(st registry.State, now time.Time) string {
+// describeConfiguredLifetime shows what was asked for, resolving the fallback
+// so the column never says "default" and leaves the reader to go looking.
+func describeConfiguredLifetime(a registry.Agent, brokerWide lifetime.Span) string {
+	span := a.IdentityLifetime.Or(brokerWide)
+	if !span.Set() {
+		return agentca.DefaultAgentLifetime.String()
+	}
+	return span.String()
+}
+
+// describeIdentity shows what the agent actually holds.
+//
+// An unlimited identity still has a date — it runs until the CA does, because
+// no certificate is truly endless. Showing "unlimited" alone would hide that,
+// so it shows both: the intent and the date it really stops.
+func describeIdentity(a registry.Agent, st registry.State, now time.Time) string {
 	switch {
 	case st.RevokedAt != nil:
 		return "revoked"
@@ -348,6 +379,8 @@ func describeIdentity(st registry.State, now time.Time) string {
 		return "none"
 	case !now.Before(st.IdentityExpires):
 		return "EXPIRED"
+	case a.IdentityLifetime.IsUnlimited():
+		return "until CA (" + st.IdentityExpires.UTC().Format("2006-01-02") + ")"
 	default:
 		return describeRemaining(st.IdentityExpires.Sub(now))
 	}

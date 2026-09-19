@@ -32,9 +32,11 @@ import (
 	"time"
 
 	"github.com/Ollornog/flying-certs/internal/atomicfile"
+	"github.com/Ollornog/flying-certs/internal/lifetime"
 )
 
-// DefaultAgentLifetime is how long an agent's identity is valid.
+// DefaultAgentLifetime is how long an agent's identity is valid when nothing
+// says otherwise.
 //
 // Short on purpose. Expiry is the sweeping mechanism — a revocation list only
 // has to catch the rare compromise, not the everyday case of a host being
@@ -180,37 +182,38 @@ func OpenOrCreate(dir string) (*CA, error) {
 // Only the name is taken from the request; everything else is set here. A CSR
 // is attacker-controlled input, and honouring its extensions would let a host
 // ask for a certificate that can sign further ones.
-func SignAgent(ca *CA, agentName string, csr *x509.CertificateRequest, lifetime time.Duration) ([]byte, error) {
+// The expiry comes back with the certificate rather than being left for the
+// caller to recompute. Two places would otherwise work out the same date from
+// the same inputs, and they would disagree the moment one of them forgot the
+// CA's own expiry — or that "unlimited" is not a duration to add to now.
+func SignAgent(ca *CA, agentName string, csr *x509.CertificateRequest, span lifetime.Span) ([]byte, time.Time, error) {
 	if agentName == "" {
-		return nil, errors.New("no agent name")
+		return nil, time.Time{}, errors.New("no agent name")
 	}
 	if csr == nil {
-		return nil, errors.New("no certificate request")
+		return nil, time.Time{}, errors.New("no certificate request")
 	}
 	// The CSR proves the asker holds the private key. Skipping this check
 	// would let anyone enrol with someone else's public key.
 	if err := csr.CheckSignature(); err != nil {
-		return nil, fmt.Errorf("certificate request is not correctly signed: %w", err)
+		return nil, time.Time{}, fmt.Errorf("certificate request is not correctly signed: %w", err)
 	}
-	if lifetime <= 0 {
-		lifetime = DefaultAgentLifetime
-	}
-	if lifetime > rootLifetime {
-		return nil, errors.New("requested lifetime outlives the CA")
-	}
-
 	serial, err := randomSerial()
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 	now := time.Now().UTC()
+	notAfter, err := agentNotAfter(ca, span, now)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		// The identity is the name, and nothing else: no DNS names, no IPs.
 		// This certificate is never used to serve anything.
 		Subject:               pkix.Name{CommonName: agentName},
 		NotBefore:             now.Add(-time.Minute), // same skew tolerance as the token check
-		NotAfter:              now.Add(lifetime),
+		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
@@ -218,9 +221,51 @@ func SignAgent(ca *CA, agentName string, csr *x509.CertificateRequest, lifetime 
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, csr.PublicKey, ca.key)
 	if err != nil {
-		return nil, fmt.Errorf("sign agent certificate: %w", err)
+		return nil, time.Time{}, fmt.Errorf("sign agent certificate: %w", err)
 	}
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), nil
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), notAfter, nil
+}
+
+// agentNotAfter works out when an identity stops working.
+//
+// Three cases, kept apart on purpose:
+//
+//   - unset: the package default, deliberately short.
+//   - a duration: exactly that, and an error when it would outlive the CA.
+//     Silently shortening a lifetime somebody wrote down would mean the
+//     configuration says one thing and the certificate another.
+//   - unlimited: the CA's own expiry. There is no such thing as a certificate
+//     that never expires, so this is as close as the format allows — and the
+//     honest way to say it, rather than picking a number that looks infinite.
+func agentNotAfter(ca *CA, span lifetime.Span, now time.Time) (time.Time, error) {
+	caEnd := ca.cert.NotAfter
+	if !now.Before(caEnd) {
+		return time.Time{}, fmt.Errorf("the agent CA expired on %s; no identity can be issued from it",
+			caEnd.UTC().Format(time.RFC3339))
+	}
+	if span.IsUnlimited() {
+		return caEnd, nil
+	}
+	d := span.Duration()
+	if !span.Set() || d <= 0 {
+		d = DefaultAgentLifetime
+	}
+	// Truncated to the second, which is all X.509 stores. Returning a more
+	// precise time than the certificate carries would make the recorded
+	// expiry and the real one differ by a fraction — invisible, and still a
+	// value that claims to be something it is not.
+	end := now.Add(d).Truncate(time.Second)
+	if end.After(caEnd) {
+		// Checked against the CA's real expiry, not against the span it was
+		// created with: a CA issued years ago has less left than its nominal
+		// lifetime, and an identity that outlives its issuer stops working
+		// without anything in the logs saying why.
+		return time.Time{}, fmt.Errorf(
+			"a lifetime of %s outlives the agent CA, which expires on %s — "+
+				"shorten it, or use %s to mean exactly that",
+			span, caEnd.UTC().Format("2006-01-02"), lifetime.Unlimited)
+	}
+	return end, nil
 }
 
 // CertPool returns a pool containing only this CA, for verifying agents.
@@ -294,13 +339,20 @@ func SignServer(ca *CA, names []string, lifetime time.Duration) (certPEM, keyPEM
 	}
 
 	now := time.Now().UTC()
+	// The broker's own certificate is issued by this program, not configured
+	// by hand, so shortening it to the CA's expiry is the right thing rather
+	// than an error to report to somebody who did not ask for it.
+	notAfter := now.Add(lifetime)
+	if notAfter.After(ca.cert.NotAfter) {
+		notAfter = ca.cert.NotAfter
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber:          serial,
 		Subject:               pkix.Name{CommonName: names[0]},
 		DNSNames:              dnsNames,
 		IPAddresses:           ips,
 		NotBefore:             now.Add(-time.Minute),
-		NotAfter:              now.Add(lifetime),
+		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,

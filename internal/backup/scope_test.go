@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/Ollornog/flying-certs/internal/config"
 )
 
@@ -27,7 +29,7 @@ func TestEveryConfigurationFieldIsClassified(t *testing.T) {
 		"Broker.ServerCert":        "in scope when configured outside the state directory",
 		"Broker.ServerKey":         "in scope when configured outside the state directory",
 		"Broker.Listen":            "not a path",
-		"Broker.IdentityLifetime":  "not a path",
+		"Broker.IdentityLifetime":  "not a path; a lifetime",
 		"ACME.Directory":           "not a path on this host",
 		"ACME.Email":               "not a path",
 		"ACME.FinalizeTimeout":     "not a path",
@@ -37,12 +39,25 @@ func TestEveryConfigurationFieldIsClassified(t *testing.T) {
 		"DNS.SecretEnv":            "names environment variables, not files",
 	}
 
+	// A type that parses itself from YAML is a value, not a section, so the
+	// walk stops there. Without this it would descend into the unexported
+	// innards of something like a lifetime and demand they be classified,
+	// which says nothing about what belongs in a backup.
+	unmarshaler := reflect.TypeOf((*yaml.Unmarshaler)(nil)).Elem()
+	isLeaf := func(t reflect.Type) bool {
+		return t.Implements(unmarshaler) || reflect.PointerTo(t).Implements(unmarshaler)
+	}
+
 	var walk func(prefix string, t2 reflect.Type)
 	var found []string
 	walk = func(prefix string, rt reflect.Type) {
 		for i := 0; i < rt.NumField(); i++ {
 			f := rt.Field(i)
 			name := prefix + f.Name
+			if isLeaf(f.Type) {
+				found = append(found, name)
+				continue
+			}
 			switch f.Type.Kind() {
 			case reflect.Struct:
 				walk(name+".", f.Type)

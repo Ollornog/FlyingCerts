@@ -46,8 +46,6 @@ func main() {
 func run() error {
 	var (
 		configPath = flag.String("config", "/etc/flying-certs/agent.yaml", "path to the configuration file")
-		token      = flag.String("token", "", "bootstrap token (enrol only)")
-		caFile     = flag.String("broker-ca", "", "the broker's CA certificate (enrol only)")
 		verbose    = flag.Bool("verbose", false, "log debug detail")
 	)
 	flag.Usage = func() {
@@ -56,11 +54,26 @@ func run() error {
 	}
 	flag.Parse()
 
-	if flag.NArg() != 1 {
+	if flag.NArg() < 1 {
 		flag.Usage()
 		return errors.New("exactly one command expected")
 	}
 	command := flag.Arg(0)
+
+	// Flags that belong to the command are read here, after its name. Go's
+	// flag package stops at the first non-flag argument, so `enrol -token X`
+	// would otherwise arrive as "the command enrol plus two stray arguments"
+	// — which is exactly how a person types it.
+	sub := flag.NewFlagSet(command, flag.ContinueOnError)
+	sub.SetOutput(os.Stderr)
+	token := sub.String("token", "", "bootstrap token (enrol)")
+	caFile := sub.String("broker-ca", "", "the broker's CA certificate (enrol)")
+	if err := sub.Parse(flag.Args()[1:]); err != nil {
+		return err
+	}
+	if sub.NArg() > 0 {
+		return fmt.Errorf("unexpected argument %q after %q", sub.Arg(0), command)
+	}
 	if command == "version" {
 		fmt.Println(version.Version)
 		return nil

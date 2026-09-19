@@ -31,6 +31,7 @@ import (
 	"github.com/Ollornog/flying-certs/internal/certstore"
 	"github.com/Ollornog/flying-certs/internal/deploy"
 	"github.com/Ollornog/flying-certs/internal/enroll"
+	"github.com/Ollornog/flying-certs/internal/lifetime"
 	"github.com/Ollornog/flying-certs/internal/registry"
 )
 
@@ -268,7 +269,7 @@ func TestIdentityFromAnotherCAIsRejectedAtTheHandshake(t *testing.T) {
 	keyPEM, csrPEM, _ := agent.NewKeyAndCSR("gateway")
 	block, _ := pem.Decode(csrPEM)
 	csr, _ := x509.ParseCertificateRequest(block.Bytes)
-	certPEM, err := agentca.SignAgent(stranger, "gateway", csr, time.Hour)
+	certPEM, _, err := agentca.SignAgent(stranger, "gateway", csr, lifetime.Of(time.Hour))
 	if err != nil {
 		t.Fatalf("sign: %v", err)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/Ollornog/flying-certs/internal/certstore"
 	"github.com/Ollornog/flying-certs/internal/csrcheck"
 	"github.com/Ollornog/flying-certs/internal/enroll"
+	"github.com/Ollornog/flying-certs/internal/lifetime"
 	"github.com/Ollornog/flying-certs/internal/registry"
 )
 
@@ -101,7 +102,7 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	certPEM, err := agentca.SignAgent(s.ca, rec.AgentName, csr, s.lifetime)
+	certPEM, notAfter, err := agentca.SignAgent(s.ca, rec.AgentName, csr, s.lifetimeFor(rec.AgentName))
 	if err != nil {
 		ev.Reason = "signing failed: " + err.Error()
 		s.audit.Record(ev)
@@ -116,7 +117,7 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 	// Record when this identity runs out. The broker cannot ask an agent for
 	// its certificate later, so this is the only moment it can learn it — and
 	// without it the lockout warning cannot be given at all.
-	if err := s.agents.Enrolled(rec.AgentName, now.Add(agentLifetime(s.lifetime)), now); err != nil {
+	if err := s.agents.Enrolled(rec.AgentName, notAfter, now); err != nil {
 		s.log.Warn("could not record the enrolment", slog.String("error", err.Error()))
 	}
 
@@ -127,7 +128,7 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 		// calls. It is public information — but see ADR-15: it must never end
 		// up in a bundle the agent serves to visitors.
 		CAPem:    string(s.ca.CertificatePEM()),
-		NotAfter: now.Add(agentLifetime(s.lifetime)).Format(time.RFC3339),
+		NotAfter: notAfter.Format(time.RFC3339),
 	})
 }
 
@@ -348,7 +349,7 @@ func (s *Server) handleRenewIdentity(w http.ResponseWriter, r *http.Request, age
 
 	// The name comes from the existing certificate, never from the request.
 	// Otherwise renewal would be a way to become someone else.
-	certPEM, err := agentca.SignAgent(s.ca, agentName, csr, s.lifetime)
+	certPEM, notAfter, err := agentca.SignAgent(s.ca, agentName, csr, s.lifetimeFor(agentName))
 	if err != nil {
 		ev.Reason = err.Error()
 		s.audit.Record(ev)
@@ -358,12 +359,12 @@ func (s *Server) handleRenewIdentity(w http.ResponseWriter, r *http.Request, age
 
 	ev.Allowed = true
 	s.audit.Record(ev)
-	if err := s.agents.Enrolled(agentName, now.Add(agentLifetime(s.lifetime)), now); err != nil {
+	if err := s.agents.Enrolled(agentName, notAfter, now); err != nil {
 		s.log.Warn("could not record a renewal", slog.String("error", err.Error()))
 	}
 	writeJSON(w, http.StatusOK, renewResponse{
 		CertificatePEM: string(certPEM),
-		NotAfter:       now.Add(agentLifetime(s.lifetime)).Format(time.RFC3339),
+		NotAfter:       notAfter.Format(time.RFC3339),
 	})
 }
 
@@ -384,11 +385,19 @@ func (s *Server) handleWhoami(w http.ResponseWriter, r *http.Request, agentName 
 	})
 }
 
-func agentLifetime(configured time.Duration) time.Duration {
-	if configured > 0 {
-		return configured
+// lifetimeFor resolves how long this agent's identity should last: its own
+// setting, then the broker-wide one, then the CA's default.
+//
+// An agent the registry does not know cannot reach here — both callers have
+// already established who is asking — but falling back rather than failing
+// keeps a lookup error from turning into a refused renewal, which is the one
+// failure that locks a host out for good (ADR-7).
+func (s *Server) lifetimeFor(agentName string) lifetime.Span {
+	agent, err := s.agents.Lookup(agentName)
+	if err != nil {
+		return s.defaultLifetime
 	}
-	return agentca.DefaultAgentLifetime
+	return agent.IdentityLifetime.Or(s.defaultLifetime)
 }
 
 // decodePEM returns the DER bytes of the first PEM block.

@@ -126,6 +126,65 @@ The broker hands one certificate *and its private key* to every host authorised 
 sometimes the only option — but the key travels, and every host holding it shares one fate. Expiry is
 then a property of the certificate, not of the host.
 
+## Identity lifetimes
+
+How long an agent's identity lasts is set per agent, with the broker's value as the fallback:
+
+```yaml
+broker:
+  identity_lifetime: 30d        # the default for agents that say nothing
+
+agents:
+  - name: gateway
+    certificates: [gateway]
+    mode: issue                 # inherits 30d
+
+  - name: nightly-builder       # rebuilt from an image every night
+    certificates: [gateway]
+    mode: issue
+    identity_lifetime: 1d
+
+  - name: remote-appliance      # someone would have to drive there
+    certificates: [internal-wildcard]
+    mode: issue
+    identity_lifetime: unlimited
+```
+
+Write it the way you say it: `1d`, `30d`, `1d12h`, `12h`. A bare `30` is refused — it reads as days
+to you and as nanoseconds to a parser, and neither reading is worth guessing at.
+
+**`unlimited` means "until the agent CA expires".** There is no certificate without an expiry, so
+that is as close as the format allows, and `agents` says so rather than claiming otherwise:
+
+```
+AGENT             MODE   LAST SEEN  LIFETIME   IDENTITY               CERTIFICATES
+gateway           issue  2 h ago    30d        27 days                1
+nightly-builder   issue  20 min     1d         22 h                   1
+remote-appliance  issue  1 day      unlimited  until CA (2036-09-16)  1
+```
+
+### What `unlimited` costs
+
+Part of the point of this tool was getting rid of long-lived shared secrets
+([ADR-2](backlog/ADR-2-mtls-statt-api-keys.md)). `unlimited` hands that property back, and it is
+worth being plain about what that means:
+
+- **Only a revocation takes the identity back.** A host that was decommissioned and never revoked
+  can still collect certificates years later.
+- **A copied key stays valid.** With a 30-day identity, a copy expires by itself, and each renewal
+  is a regular occasion for something to look wrong. Unlimited removes that occasion.
+
+It exists anyway, because the opposite failure is real: an identity that expires on a machine nobody
+can reach locks it out for good ([ADR-7](backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)), and an
+outage that needs a person in a car costs more than a certificate that lasts. The choice is yours;
+the tool's job is to keep it visible. So `check` reports every unlimited identity — and does not
+fail because of one. A standing state that goes red every run trains people to stop reading the
+output, and then the warning that matters goes unread with it.
+
+No identity outlives the CA that issued it. That is checked against the CA's real expiry, not the
+lifetime it was created with: a CA eight years into a ten-year life has two years left, and an
+identity that outlives its issuer stops working with nothing in the logs to say why.
+
 ## Running the broker
 
 `obtain` and `renew` need nothing but a timer. Serving agents is a separate command:
@@ -138,9 +197,9 @@ flying-certs-server -config config.yaml check              # exits non-zero when
 ```
 
 ```
-AGENT  MODE   LAST SEEN  IDENTITY     CERTIFICATES
-web1   issue  2 h ago    27 days      1
-gw     share  9 days     4 days left  2
+AGENT  MODE   LAST SEEN  LIFETIME  IDENTITY     CERTIFICATES
+web1   issue  2 h ago    30d       27 days      1
+gw     share  9 days     30d       4 days left  2
 ```
 
 `check` is the one meant for cron or a monitoring probe. It reports four situations and exits
@@ -153,7 +212,8 @@ non-zero for any of them, most urgent first:
 | **lockout soon** | its identity runs out before it can plausibly renew itself |
 | **locked out** | its identity has expired; it now needs a new token by hand ([ADR-7](backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) |
 
-An agent you revoked on purpose is not reported as a problem.
+An agent you revoked on purpose is not reported as a problem, and neither is a configured
+`unlimited` identity — that one is printed as a note and leaves the exit code alone.
 
 ```bash
 flying-certs-server -config config.yaml revoke -agent web1 -reason "decommissioned"
@@ -238,7 +298,7 @@ is broken, not the code — so the repeatability promise is demonstrated rather 
 
 **Early, and honest about it.** The interfaces are not stable and there is no usable release yet.
 
-All five milestones in [`backlog/`](backlog/) are done. The broker obtains and keeps certificates,
+All six milestones in [`backlog/`](backlog/) are done. The broker obtains and keeps certificates,
 serves them over mTLS, tracks who collected what and when each identity runs out, warns before a
 host locks itself out, and can be backed up and restored. Agents enrol with a one-time token,
 collect over mTLS, and verify that their reload actually took effect.

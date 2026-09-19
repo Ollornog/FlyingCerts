@@ -20,6 +20,7 @@ import (
 
 	"github.com/Ollornog/flying-certs/internal/acme"
 	"github.com/Ollornog/flying-certs/internal/certstore"
+	"github.com/Ollornog/flying-certs/internal/lifetime"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -56,9 +57,10 @@ type BrokerConfig struct {
 	StateDir string `yaml:"state_dir"`
 	// AuditLog is where decisions are recorded.
 	AuditLog string `yaml:"audit_log"`
-	// IdentityLifetime is how long an agent identity is valid. Zero means the
-	// package default, which is deliberately short.
-	IdentityLifetime time.Duration `yaml:"identity_lifetime"`
+	// IdentityLifetime is how long an agent identity is valid, for agents that
+	// do not set their own. Written as "30d", "12h" or "unlimited"; left out,
+	// the package default applies.
+	IdentityLifetime lifetime.Span `yaml:"identity_lifetime"`
 	// ServerCert and ServerKey are the endpoint's own TLS files. Agents verify
 	// the broker with the agent CA, so these are normally issued by it.
 	ServerCert string `yaml:"server_cert"`
@@ -290,4 +292,11 @@ type AgentSpec struct {
 	Certificates []string `yaml:"certificates"`
 	// Mode is "issue" (recommended) or "share".
 	Mode string `yaml:"mode"`
+	// IdentityLifetime overrides broker.identity_lifetime for this agent.
+	//
+	// Per agent rather than only broker-wide, because hosts differ: something
+	// rebuilt from an image every night wants a day, a machine that is rarely
+	// touched wants longer. "unlimited" is allowed and means the identity
+	// stops being the thing that expires — see ADR-17 for what that costs.
+	IdentityLifetime lifetime.Span `yaml:"identity_lifetime"`
 }

@@ -53,3 +53,49 @@ certificates:
     # Optional: ask the CA for a specific issuance profile, e.g. Let's
     # Encrypt's short-lived certificates.
     # profile: shortlived
+
+# ---------------------------------------------------------------------------
+# The agent-facing endpoint. Leave this out entirely and the broker is just a
+# timer that keeps certificates current — which is a perfectly good way to run
+# it.
+broker:
+  listen: ":8443"
+
+  # The agent CA, the token store and the agent registry live here. Back it up
+  # together with the ACME account: losing the CA locks out every agent.
+  state_dir: /var/lib/flying-certs/state
+
+  # Who collected what, and when. Append-only.
+  audit_log: /var/log/flying-certs/audit.log
+
+  # How long an agent identity lasts, for agents that do not set their own.
+  # Written as 30d, 12h, 1d12h — or "unlimited", which means it runs until the
+  # agent CA does. Left out, the built-in default (30d) applies.
+  #
+  # Shorter is safer: an identity is a credential, and a short one takes
+  # itself back. The agent renews at two thirds of its life, so a day is
+  # workable for a host that runs its timer hourly.
+  identity_lifetime: 30d
+
+agents:
+  # The ordinary case: inherits identity_lifetime from the broker.
+  - name: gateway
+    certificates: [gateway]
+    mode: issue
+
+  # Rebuilt from an image every night, so it enrols often and never needs a
+  # long-lived identity.
+  - name: nightly-builder
+    certificates: [gateway]
+    mode: issue
+    identity_lifetime: 1d
+
+  # An appliance that is rarely touched and cannot be re-enrolled by hand
+  # without someone driving to it. "unlimited" means the identity is no longer
+  # the thing that expires — the trade is that only `revoke` can take it back,
+  # so the audit log and `check` become the way you notice anything. See
+  # ADR-17 for the full argument.
+  - name: remote-appliance
+    certificates: [internal-wildcard]
+    mode: issue
+    identity_lifetime: unlimited

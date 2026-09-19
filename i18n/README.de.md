@@ -131,6 +131,72 @@ Der Vermittler gibt ein Zertifikat *samt privatem Schlüssel* an jeden dafür be
 Einfacher, und manchmal die einzige Möglichkeit — aber der Schlüssel reist, und alle Hosts, die ihn
 halten, teilen ein Schicksal. Ablauf ist dann eine Eigenschaft des Zertifikats, nicht des Hosts.
 
+## Laufzeit der Identitäten
+
+Wie lange die Identität eines Agenten gilt, wird je Agent eingestellt; der Wert des Vermittlers
+ist der Rückfall:
+
+```yaml
+broker:
+  identity_lifetime: 30d        # Vorgabe für Agenten, die nichts sagen
+
+agents:
+  - name: gateway
+    certificates: [gateway]
+    mode: issue                 # erbt 30d
+
+  - name: nightly-builder       # entsteht jede Nacht neu aus einem Abbild
+    certificates: [gateway]
+    mode: issue
+    identity_lifetime: 1d
+
+  - name: remote-appliance      # da müsste jemand hinfahren
+    certificates: [internal-wildcard]
+    mode: issue
+    identity_lifetime: unlimited
+```
+
+Schreibbar, wie man darüber spricht: `1d`, `30d`, `1d12h`, `12h`. Ein blosses `30` wird abgelehnt —
+für Sie heisst es Tage, für einen Parser Nanosekunden, und keine der beiden Lesarten ist es wert,
+geraten zu werden.
+
+**`unlimited` heisst „bis die Agenten-CA abläuft".** Ein Zertifikat ohne Ablauf gibt es nicht, das
+ist also so nah dran, wie das Format erlaubt — und `agents` sagt das auch, statt etwas anderes zu
+behaupten:
+
+```
+AGENT             MODE   LAST SEEN  LIFETIME   IDENTITY               CERTIFICATES
+gateway           issue  2 h ago    30d        27 days                1
+nightly-builder   issue  20 min     1d         22 h                   1
+remote-appliance  issue  1 day      unlimited  until CA (2036-09-16)  1
+```
+
+### Was `unlimited` kostet
+
+Ein Zweck dieses Werkzeugs war, langlebige gemeinsame Geheimnisse loszuwerden
+([ADR-2](../backlog/ADR-2-mtls-statt-api-keys.md)). `unlimited` gibt genau diese Eigenschaft
+wieder her, und das sollte deutlich dastehen:
+
+- **Nur ein Widerruf nimmt die Identität zurück.** Ein ausgemusterter und nie widerrufener Host
+  kann Jahre später noch Zertifikate abholen.
+- **Ein kopierter Schlüssel bleibt gültig.** Bei 30 Tagen läuft eine Kopie von selbst aus, und
+  jede Erneuerung ist eine regelmässige Gelegenheit, dass etwas auffällt. Unbegrenzt fällt diese
+  Gelegenheit weg.
+
+Es gibt die Einstellung trotzdem, weil der Gegenfall real ist: eine abgelaufene Identität auf einer
+Maschine, die niemand erreicht, sperrt sie endgültig aus
+([ADR-7](../backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) — und ein Ausfall, der einen Menschen
+mit einem Auto braucht, ist teurer als ein Zertifikat, das länger gilt. Die Entscheidung gehört
+Ihnen; die Aufgabe des Werkzeugs ist, sie sichtbar zu halten. `check` meldet deshalb jede
+unbegrenzte Identität — und schlägt deswegen **nicht** fehl. Ein Dauerzustand, der bei jedem Lauf
+rot ist, bringt Leute dazu, die Ausgabe nicht mehr zu lesen, und dann geht die echte Warnung mit
+unter.
+
+Keine Identität überlebt die CA, die sie ausgestellt hat. Geprüft wird gegen das **tatsächliche**
+Ende der CA, nicht gegen die Laufzeit, mit der sie erzeugt wurde: eine CA, die acht Jahre eines
+Jahrzehnts hinter sich hat, hat zwei übrig — und ein Zertifikat, das seinen Aussteller überlebt,
+hört ohne erkennbaren Grund auf zu funktionieren.
+
 ## Den Vermittler betreiben
 
 `obtain` und `renew` brauchen nichts als einen Timer. Agenten zu bedienen ist ein eigener Befehl:
@@ -143,9 +209,9 @@ flying-certs-server -config config.yaml check              # endet ungleich null
 ```
 
 ```
-AGENT  MODE   LAST SEEN  IDENTITY     CERTIFICATES
-web1   issue  2 h ago    27 days      1
-gw     share  9 days     4 days left  2
+AGENT  MODE   LAST SEEN  LIFETIME  IDENTITY     CERTIFICATES
+web1   issue  2 h ago    30d       27 days      1
+gw     share  9 days     30d       4 days left  2
 ```
 
 `check` ist der Befehl für cron oder eine Überwachungssonde. Er meldet vier Lagen, die dringlichste
@@ -158,7 +224,8 @@ zuerst, und endet bei jeder davon ungleich null:
 | **lockout soon** | seine Identität läuft aus, bevor er sich plausibel selbst erneuern kann |
 | **locked out** | Identität abgelaufen; er braucht jetzt von Hand eine neue Marke ([ADR-7](../backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) |
 
-Ein absichtlich widerrufener Agent taucht nicht als Problem auf.
+Ein absichtlich widerrufener Agent taucht nicht als Problem auf, und eine bewusst auf `unlimited`
+gestellte Identität ebenso wenig — die wird als Hinweis gedruckt und lässt den Rückgabewert in Ruhe.
 
 ```bash
 flying-certs-server -config config.yaml revoke -agent web1 -reason "ausgemustert"
@@ -249,7 +316,7 @@ wird, ist kaputt — nicht der Code. So ist die Wiederholbarkeit vorgeführt sta
 **Früh, und ehrlich darüber.** Die Schnittstellen sind nicht stabil, es gibt noch keine brauchbare
 Veröffentlichung.
 
-Alle fünf Meilensteine in [`backlog/`](../backlog/) sind erledigt. Der Vermittler holt und hält
+Alle sechs Meilensteine in [`backlog/`](../backlog/) sind erledigt. Der Vermittler holt und hält
 Zertifikate, gibt sie über mTLS aus, führt Buch darüber, wer wann was abgeholt hat und wann welche
 Identität ausläuft, warnt bevor sich ein Host aussperrt, und lässt sich sichern und zurückspielen.
 Agenten schreiben sich mit einer einmaligen Marke ein, holen über mTLS und prüfen nach, ob ihr

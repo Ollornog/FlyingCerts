@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"github.com/Ollornog/flying-certs/internal/lifetime"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,7 +127,7 @@ func TestSignAgentProducesAClientCertificate(t *testing.T) {
 	}
 	csr, _ := csrFor(t, "whatever-the-agent-asked-for")
 
-	certPEM, err := SignAgent(ca, "gateway", csr, 0)
+	certPEM, _, err := SignAgent(ca, "gateway", csr, lifetime.Span{})
 	if err != nil {
 		t.Fatalf("SignAgent: %v", err)
 	}
@@ -172,7 +173,7 @@ func TestSignAgentRejectsUnsignedRequest(t *testing.T) {
 	tampered.Signature = append([]byte(nil), csr.Signature...)
 	tampered.Signature[0] ^= 0xff
 
-	if _, err := SignAgent(ca, "gateway", &tampered, 0); err == nil {
+	if _, _, err := SignAgent(ca, "gateway", &tampered, lifetime.Span{}); err == nil {
 		t.Fatal("a request with a broken signature was signed")
 	}
 }
@@ -180,7 +181,7 @@ func TestSignAgentRejectsUnsignedRequest(t *testing.T) {
 func TestSignAgentRejectsEmptyName(t *testing.T) {
 	ca, _ := Create(t.TempDir())
 	csr, _ := csrFor(t, "gateway")
-	if _, err := SignAgent(ca, "", csr, 0); err == nil {
+	if _, _, err := SignAgent(ca, "", csr, lifetime.Span{}); err == nil {
 		t.Error("an agent certificate without a name was issued")
 	}
 }
@@ -188,7 +189,7 @@ func TestSignAgentRejectsEmptyName(t *testing.T) {
 func TestSignAgentRejectsLifetimeBeyondTheCA(t *testing.T) {
 	ca, _ := Create(t.TempDir())
 	csr, _ := csrFor(t, "gateway")
-	if _, err := SignAgent(ca, "gateway", csr, 20*365*24*time.Hour); err == nil {
+	if _, _, err := SignAgent(ca, "gateway", csr, lifetime.Of(20*365*24*time.Hour)); err == nil {
 		t.Error("a certificate outliving its CA was issued")
 	}
 }
@@ -196,7 +197,7 @@ func TestSignAgentRejectsLifetimeBeyondTheCA(t *testing.T) {
 func TestDefaultLifetimeIsShort(t *testing.T) {
 	ca, _ := Create(t.TempDir())
 	csr, _ := csrFor(t, "gateway")
-	certPEM, err := SignAgent(ca, "gateway", csr, 0)
+	certPEM, _, err := SignAgent(ca, "gateway", csr, lifetime.Span{})
 	if err != nil {
 		t.Fatalf("SignAgent: %v", err)
 	}

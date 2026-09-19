@@ -34,6 +34,7 @@ import (
 	"github.com/Ollornog/flying-certs/internal/agentca"
 	"github.com/Ollornog/flying-certs/internal/certstore"
 	"github.com/Ollornog/flying-certs/internal/enroll"
+	"github.com/Ollornog/flying-certs/internal/lifetime"
 	"github.com/Ollornog/flying-certs/internal/registry"
 )
 
@@ -80,15 +81,15 @@ type Event struct {
 
 // Server serves the agent-facing API.
 type Server struct {
-	ca       *agentca.CA
-	tokens   *enroll.Store
-	agents   *registry.Registry
-	certs    *certstore.Store
-	audit    Auditor
-	log      *slog.Logger
-	lifetime time.Duration
-	specs    Specs
-	issuer   Issuer
+	ca              *agentca.CA
+	tokens          *enroll.Store
+	agents          *registry.Registry
+	certs           *certstore.Store
+	audit           Auditor
+	log             *slog.Logger
+	defaultLifetime lifetime.Span
+	specs           Specs
+	issuer          Issuer
 
 	mux       *http.ServeMux
 	openPaths map[string]bool // routes reachable without a client certificate
@@ -109,7 +110,9 @@ type Config struct {
 	Specs  Specs
 	Issuer Issuer
 
-	Lifetime time.Duration // agent identity lifetime; zero means the CA default
+	// Lifetime is the broker-wide agent identity lifetime, used for agents
+	// that do not set their own. Unset means the CA default.
+	Lifetime lifetime.Span
 
 	// EnrolLimit caps enrolment attempts per remote address per hour.
 	// Zero means DefaultEnrolRate; a negative value disables the limit and is
@@ -140,7 +143,7 @@ func New(cfg Config) (*Server, error) {
 
 	s := &Server{
 		ca: cfg.CA, tokens: cfg.Tokens, agents: cfg.Agents, certs: cfg.Certs,
-		audit: audit, log: log, lifetime: cfg.Lifetime,
+		audit: audit, log: log, defaultLifetime: cfg.Lifetime,
 		specs: cfg.Specs, issuer: cfg.Issuer,
 		mux:       http.NewServeMux(),
 		openPaths: map[string]bool{},

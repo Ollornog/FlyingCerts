@@ -74,11 +74,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/pebbletest`, so the issuance and recovery suites share one DNS-01
   solver instead of two copies drifting apart.
 
+- Configurable identity lifetimes, per agent and broker-wide, written the way
+  they are spoken about: `1d`, `30d`, `1d12h` — or `unlimited`, which means the
+  identity runs until the agent CA does. Unset, a duration and unlimited are
+  three distinct states, so "not configured" can never be mistaken for
+  "expires immediately" nor unlimited for "very long". A bare number is
+  refused: it reads as days to the author and as nanoseconds to a parser.
+- `agents` gained a LIFETIME column, and shows an unlimited identity as the
+  date it really stops rather than claiming an expiry the format cannot hold.
+- `check` separates findings that need action from ones merely worth knowing.
+  An unlimited identity is reported every run and never fails it — a standing
+  state that always exits non-zero teaches people to stop reading the output.
+
 ### Fixed
 - `token -agent NAME` printed the usage block instead of issuing a token. Go's
   `flag` stops at the first non-flag argument, so everything after the command
   name was left unparsed. Command flags are now read from their own flag set
   after the command name — the way a person types it. `-force` moved with them.
+  The same bug was in `flying-certs-agent` (`enrol -token …`) and is fixed
+  there too; both entry points now have a regression test.
+- An agent identity could outlive the CA that issued it. The check was against
+  the CA's nominal lifetime rather than its actual expiry, so a CA years into
+  service would still hand out certificates that stop working for no visible
+  reason. Too long a lifetime is now refused rather than silently shortened.
+- `SignAgent` returns the expiry it issued instead of leaving the caller to
+  recompute it. Two places working out the same date from the same inputs is
+  how they come to disagree — and for an unlimited identity the recomputation
+  was wrong by a decade.
 
 ### Changed
 - The README no longer claims a bootstrap token is bound to the CSR it will be

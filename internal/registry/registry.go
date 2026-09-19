@@ -16,6 +16,7 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"github.com/Ollornog/flying-certs/internal/lifetime"
 	"sort"
 	"strings"
 	"sync"
@@ -41,6 +42,9 @@ type Agent struct {
 	// Mode says what the agent receives: the certificate alone, or the
 	// certificate with its private key.
 	Mode DeliveryMode
+	// IdentityLifetime is how long this agent's identity is issued for.
+	// Unset means the broker-wide setting, and that the package default.
+	IdentityLifetime lifetime.Span
 }
 
 // DeliveryMode is the choice from ADR-3.
@@ -299,6 +303,11 @@ type Concern int
 const (
 	// ConcernNone means nothing to report.
 	ConcernNone Concern = iota
+	// ConcernUnlimited means this agent's identity does not expire. That is a
+	// configured choice, not a fault, so it never makes `check` fail — but it
+	// is reported, because an identity that never expires is a credential
+	// that only a revocation can ever take back (ADR-17).
+	ConcernUnlimited
 	// ConcernNeverEnrolled means the agent is configured but has never
 	// collected an identity. Usually a host that was set up and forgotten.
 	ConcernNeverEnrolled
@@ -314,8 +323,17 @@ const (
 	ConcernLockedOut
 )
 
+// NeedsAction separates the findings somebody has to do something about from
+// the ones that are merely worth knowing. It is what decides `check`'s exit
+// code, so a standing state cannot train anyone to ignore the output.
+func (c Concern) NeedsAction() bool {
+	return c >= ConcernNeverEnrolled
+}
+
 func (c Concern) String() string {
 	switch c {
+	case ConcernUnlimited:
+		return "identity does not expire"
 	case ConcernNeverEnrolled:
 		return "never enrolled"
 	case ConcernSilent:
@@ -348,15 +366,17 @@ func (r *Registry) Review(now time.Time, silentAfter, warnBefore time.Duration) 
 	defer r.mu.RUnlock()
 
 	var out []Finding
-	for name := range r.agents {
+	for name, agent := range r.agents {
 		st, ok := r.state[name]
-		switch {
-		case !ok || st.LastSeen.IsZero():
+		// Revoked is checked first: an agent shut out on purpose is not a
+		// problem to report, whatever else is true of it.
+		if ok && st.RevokedAt != nil {
+			continue
+		}
+		if !ok || st.LastSeen.IsZero() {
 			out = append(out, Finding{name, ConcernNeverEnrolled,
 				"configured but has never collected an identity"})
 			continue
-		case st.RevokedAt != nil:
-			continue // revoked on purpose; not a concern
 		}
 
 		switch {
@@ -372,6 +392,13 @@ func (r *Registry) Review(now time.Time, silentAfter, warnBefore time.Duration) 
 		case st.LastSeen.Before(now.Add(-silentAfter)):
 			out = append(out, Finding{name, ConcernSilent,
 				fmt.Sprintf("last seen %s", st.LastSeen.UTC().Format(time.RFC3339))})
+		case agent.IdentityLifetime.IsUnlimited():
+			// Reported last and only when nothing else is wrong: this is a
+			// standing state, and a standing state that shouts drowns out the
+			// ones that do not.
+			out = append(out, Finding{name, ConcernUnlimited,
+				fmt.Sprintf("configured as %s; only a revocation can take this identity back",
+					lifetime.Unlimited)})
 		}
 	}
 	// Most urgent first, then by name: a report read from the top starts with
