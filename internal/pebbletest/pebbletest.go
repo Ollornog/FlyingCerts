@@ -10,9 +10,16 @@
 //
 //	docker network create fc-pebble
 //	docker run -d --name fc-challtestsrv --network fc-pebble -p 8055:8055 \
-//	  ghcr.io/letsencrypt/pebble-challtestsrv:latest -defaultIPv6 "" -defaultIPv4 127.0.0.1
-//	docker run -d --name fc-pebble --network fc-pebble -p 14000:14000 \
-//	  -e PEBBLE_VA_NOSLEEP=1 ghcr.io/letsencrypt/pebble:latest -dnsserver fc-challtestsrv:8053
+//	  ghcr.io/letsencrypt/pebble-challtestsrv@sha256:12ce21884def456bcf9786542113949e1f19dc7738d2c70e156c2d0c38a1405b \
+//	  -defaultIPv6 "" -defaultIPv4 127.0.0.1
+//	docker run -d --name fc-pebble --network fc-pebble -p 14000:14000 -e PEBBLE_VA_NOSLEEP=1 \
+//	  ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199 \
+//	  -dnsserver fc-challtestsrv:8053
+//
+// The digests are the same ones the workflows pin, and they are pinned rather
+// than `latest` for the usual reason plus a specific one: the first v0.1.0
+// release run failed here on an ARI call that passes locally and in CI, with
+// the only uncontrolled difference being which image the runner had pulled.
 //
 // Give each suite a domain of its own. The challenge server is shared, go test
 // runs packages concurrently, and CleanUp deletes a TXT record by name — so two

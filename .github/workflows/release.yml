@@ -36,24 +36,30 @@ jobs:
       # Dieselbe Test-CA wie in ci.yml, und aus demselben Grund: die Suite
       # laesst die Ende-zu-Ende-Tests auf einem Runner absichtlich scheitern
       # statt sie zu ueberspringen. Fehlt Pebble hier, ist der Release-Lauf rot
-      # — was beim ersten Tag genau so passiert ist. Ein Release-Workflow muss
-      # jede Umgebung mitbringen, die seine Suite braucht; dass ci.yml sie hat,
-      # hilft ihm nicht.
+      # — was beim ersten v0.1.0-Tag genau so passiert ist. Ein Release-Workflow
+      # muss jede Umgebung mitbringen, die seine Suite braucht; dass ci.yml sie
+      # hat, hilft ihm nicht.
+      #
+      # Per Digest gepinnt, nicht `latest`: Pebble veroeffentlicht keine
+      # versionierten Container-Tags (Stand v2.10.1, 20.04.2026), und zwei
+      # Laeufe muessen dasselbe Abbild bekommen.
       - name: Test-CA starten (Pebble)
         run: |
           docker network create pebble
           docker run -d --name challtestsrv --network pebble \
             -p 8055:8055 \
-            ghcr.io/letsencrypt/pebble-challtestsrv:latest \
+            ghcr.io/letsencrypt/pebble-challtestsrv@sha256:12ce21884def456bcf9786542113949e1f19dc7738d2c70e156c2d0c38a1405b \
             -defaultIPv6 "" -defaultIPv4 127.0.0.1
           docker run -d --name pebble --network pebble \
             -p 14000:14000 -e PEBBLE_VA_NOSLEEP=1 \
-            ghcr.io/letsencrypt/pebble:latest -dnsserver challtestsrv:8053
+            ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199 -dnsserver challtestsrv:8053
           for i in $(seq 30); do
             curl -sk https://localhost:14000/dir >/dev/null && break
             sleep 1
           done
-          curl -sk https://localhost:14000/dir >/dev/null
+          # Nicht nur "antwortet", sondern "kann ARI": die Erneuerungstests
+          # fragen renewalInfo ab.
+          curl -sk https://localhost:14000/dir | grep -q renewalInfo
 
       - name: Volle Suite
         run: scripts/check.sh
@@ -85,3 +91,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag
+
+      # Wenn die Suite kippt, ist die erste Frage, was die Test-CA gesehen hat.
+      - name: Pebble-Protokoll bei Fehlschlag
+        if: failure()
+        run: |
+          echo "::group::pebble"; docker logs pebble 2>&1 | tail -80; echo "::endgroup::"
+          echo "::group::challtestsrv"; docker logs challtestsrv 2>&1 | tail -40; echo "::endgroup::"
