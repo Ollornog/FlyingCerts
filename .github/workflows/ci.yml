@@ -13,7 +13,7 @@ permissions:
 jobs:
   test:
     name: Tests und Hygiene
-    runs-on: ubuntu-latest   # oeffentliches Repo: Fork-PRs duerfen nie auf eigener Hardware laufen
+    runs-on: ubuntu-latest   # oeffentliches Repo -> niemals self-hosted (Fork-PRs)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
