@@ -118,6 +118,10 @@ README for what that means in practice.
   travels and the broker stores none.
 
 ### Fixed
+- The release workflow did not start the test CA, so its suite failed the
+  moment the first tag was pushed — the end-to-end tests fail rather than skip
+  on a runner, by design. A release workflow has to bring up every environment
+  its suite needs; that `ci.yml` has one does not help it.
 - `public_key` never reached the registry: present in the configuration, the
   registry and the handlers, with the one line that copies it left out. Every
   unit test passed and the feature did nothing. Found by running it by hand,
