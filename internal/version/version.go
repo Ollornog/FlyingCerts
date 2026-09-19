@@ -1,7 +1,7 @@
-// Package version hält die eine Stelle, an der die Version dieses Projekts steht.
-// Der Hygiene-Test erzwingt, dass CHANGELOG.md dieselbe Version nennt.
+// Package version holds the single place where this project's version lives.
+// The repository hygiene test enforces that CHANGELOG.md names the same one.
 package version
 
-// Version folgt SemVer (https://semver.org). Bei einem Release wandert sie
-// zusammen mit dem CHANGELOG-Eintrag im selben Commit.
+// Version follows SemVer (https://semver.org). On a release it moves together
+// with the changelog entry, in the same commit.
 const Version = "0.1.0"
