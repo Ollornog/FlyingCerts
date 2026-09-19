@@ -1,6 +1,7 @@
 package brokerapi
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -9,8 +10,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Ollornog/flying-certs/internal/acme"
 	"github.com/Ollornog/flying-certs/internal/agentca"
 	"github.com/Ollornog/flying-certs/internal/certstore"
+	"github.com/Ollornog/flying-certs/internal/csrcheck"
 	"github.com/Ollornog/flying-certs/internal/enroll"
 	"github.com/Ollornog/flying-certs/internal/registry"
 )
@@ -187,18 +190,124 @@ func (s *Server) handleFetch(w http.ResponseWriter, r *http.Request, agentName s
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// handleIssue is the `issue` mode: the agent sends a CSR and the broker
-// obtains a certificate for it. Wired up in M-3; the route exists now so the
-// route-coverage test cannot be satisfied by simply not having it.
+// handleIssue is the `issue` mode: the agent sends a CSR, the broker obtains a
+// certificate for it, and no private key ever exists on this side.
+//
+// The order of checks is the security: permission first, then the names in the
+// request against what that permission covers, and only then anything that
+// costs a round trip to the CA.
 func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request, agentName string) {
+	now := time.Now().UTC()
 	certName := r.PathValue("name")
-	if _, err := s.agents.Authorise(agentName, certName); err != nil {
-		s.audit.Record(Event{At: time.Now().UTC(), Action: "issue", Agent: agentName,
-			Certificate: certName, RemoteAddr: r.RemoteAddr, Reason: err.Error()})
+	ev := Event{At: now, Action: "issue", Agent: agentName,
+		Certificate: certName, RemoteAddr: r.RemoteAddr}
+
+	agent, err := s.agents.Authorise(agentName, certName)
+	if err != nil {
+		ev.Reason = err.Error()
+		s.audit.Record(ev)
 		writeError(w, http.StatusNotFound, "no such certificate for this agent")
 		return
 	}
-	writeError(w, http.StatusNotImplemented, "issuing per agent arrives with M-3")
+	if agent.Mode != registry.ModeIssue {
+		ev.Reason = "agent is configured for " + string(agent.Mode)
+		s.audit.Record(ev)
+		writeError(w, http.StatusConflict,
+			"this agent is configured for the share mode; fetch the certificate instead")
+		return
+	}
+	if s.specs == nil || s.issuer == nil {
+		ev.Reason = "issuing not configured"
+		s.audit.Record(ev)
+		writeError(w, http.StatusServiceUnavailable, "this broker cannot issue per agent")
+		return
+	}
+
+	var req struct {
+		CSR string `json:"csr"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxBody)).Decode(&req); err != nil {
+		ev.Reason = "malformed request"
+		s.audit.Record(ev)
+		writeError(w, http.StatusBadRequest, "malformed request")
+		return
+	}
+	csr, err := parseCSR([]byte(req.CSR))
+	if err != nil {
+		ev.Reason = "bad csr"
+		s.audit.Record(ev)
+		writeError(w, http.StatusBadRequest, "certificate request could not be read")
+		return
+	}
+	// The signature proves the asker holds the key it is asking about.
+	if err := csr.CheckSignature(); err != nil {
+		ev.Reason = "csr signature invalid"
+		s.audit.Record(ev)
+		writeError(w, http.StatusBadRequest, "certificate request is not correctly signed")
+		return
+	}
+
+	domains, ok := s.specs.DomainsFor(certName)
+	if !ok {
+		ev.Reason = "certificate not configured"
+		s.audit.Record(ev)
+		writeError(w, http.StatusNotFound, "no such certificate for this agent")
+		return
+	}
+
+	// The check this whole project is built around: exactly these names, no
+	// others, and no quiet trimming.
+	if result := csrcheck.Check(csr, domains); !result.OK() {
+		ev.Reason = "csr names rejected: " + result.Error()
+		s.audit.Record(ev)
+		s.log.Warn("an agent asked for names it may not have",
+			slog.String("agent", agentName),
+			slog.String("certificate", certName),
+			slog.String("mismatch", result.Error()))
+		// The reason is told to the caller here, unlike an unknown
+		// certificate: the asker already knows these names — it sent them —
+		// so there is nothing to leak, and an operator debugging a mismatch
+		// needs to see which name was wrong.
+		writeError(w, http.StatusForbidden, result.Error())
+		return
+	}
+
+	// A previous certificate lets the renewal name its predecessor, which
+	// exempts it from the CA's rate limits (RFC 9773 §5).
+	var previous *x509.Certificate
+	if _, _, pair, err := s.certs.Load(certName); err == nil {
+		previous = pair.Leaf
+	}
+
+	res, err := s.issuer.ObtainForCSR(r.Context(), csr, acme.Request{Replaces: previous})
+	if err != nil {
+		ev.Reason = err.Error()
+		s.audit.Record(ev)
+		s.log.Error("could not obtain a certificate for an agent",
+			slog.String("agent", agentName), slog.String("certificate", certName),
+			slog.String("error", err.Error()))
+		writeError(w, http.StatusBadGateway, "the certificate authority did not issue a certificate")
+		return
+	}
+
+	ev.Allowed = true
+	s.audit.Record(ev)
+	if err := s.agents.Delivered(agentName, certName, now); err != nil {
+		s.log.Warn("could not record a delivery", slog.String("error", err.Error()))
+	}
+	writeJSON(w, http.StatusOK, issueResponse{
+		Name: certName,
+		// No private key in this answer, and none exists here to include —
+		// that is the entire point of the mode.
+		CertificatePEM: string(res.CertificatePEM),
+		IssuerPEM:      string(res.IssuerPEM),
+	})
+}
+
+type issueResponse struct {
+	Name           string `json:"name"`
+	CertificatePEM string `json:"certificate_pem"`
+	IssuerPEM      string `json:"issuer_pem,omitempty"`
 }
 
 type renewResponse struct {

@@ -19,6 +19,7 @@
 package brokerapi
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -29,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Ollornog/flying-certs/internal/acme"
 	"github.com/Ollornog/flying-certs/internal/agentca"
 	"github.com/Ollornog/flying-certs/internal/certstore"
 	"github.com/Ollornog/flying-certs/internal/enroll"
@@ -41,6 +43,24 @@ import (
 // from a business-level 401 such as a bad token. Without that distinction the
 // test would pass on a route that is unreachable for entirely the wrong reason.
 const ErrNeedClientCert = "a client certificate is required"
+
+// Specs answers what a certificate is configured to cover. The `issue` mode
+// needs it to know which names an agent may put in its request.
+//
+// An interface rather than the configuration struct: the handler should not be
+// able to reach anything else about the configuration, and a test should not
+// have to build one.
+type Specs interface {
+	// DomainsFor returns the configured names for a certificate, and whether
+	// it is configured at all.
+	DomainsFor(certName string) ([]string, bool)
+}
+
+// Issuer obtains certificates from the CA. Narrow on purpose: the handler can
+// ask for a certificate and nothing else.
+type Issuer interface {
+	ObtainForCSR(ctx context.Context, csr *x509.CertificateRequest, req acme.Request) (*acme.Result, error)
+}
 
 // Auditor records what happened. Every decision that matters goes through it.
 type Auditor interface {
@@ -67,6 +87,8 @@ type Server struct {
 	audit    Auditor
 	log      *slog.Logger
 	lifetime time.Duration
+	specs    Specs
+	issuer   Issuer
 
 	mux       *http.ServeMux
 	openPaths map[string]bool // routes reachable without a client certificate
@@ -75,12 +97,18 @@ type Server struct {
 
 // Config assembles a Server.
 type Config struct {
-	CA       *agentca.CA
-	Tokens   *enroll.Store
-	Agents   *registry.Registry
-	Certs    *certstore.Store
-	Audit    Auditor
-	Log      *slog.Logger
+	CA     *agentca.CA
+	Tokens *enroll.Store
+	Agents *registry.Registry
+	Certs  *certstore.Store
+	Audit  Auditor
+	Log    *slog.Logger
+
+	// Specs and Issuer power the `issue` mode. Left nil, that route answers
+	// "not configured" rather than failing in some surprising way.
+	Specs  Specs
+	Issuer Issuer
+
 	Lifetime time.Duration // agent identity lifetime; zero means the CA default
 
 	// EnrolLimit caps enrolment attempts per remote address per hour.
@@ -113,6 +141,7 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{
 		ca: cfg.CA, tokens: cfg.Tokens, agents: cfg.Agents, certs: cfg.Certs,
 		audit: audit, log: log, lifetime: cfg.Lifetime,
+		specs: cfg.Specs, issuer: cfg.Issuer,
 		mux:       http.NewServeMux(),
 		openPaths: map[string]bool{},
 	}

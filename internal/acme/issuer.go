@@ -259,3 +259,71 @@ func (i *Issuer) RenewalInfo(ctx context.Context, cert *x509.Certificate) (Renew
 	}
 	return info, nil
 }
+
+// ObtainForCSR fetches a certificate for a request the agent built itself.
+//
+// This is the `issue` mode, and the reason it exists: the agent generated the
+// key, so the key never travels. We pass the CSR through to the CA and hand
+// back what comes out — the broker never sees a private key at all.
+//
+// The caller must already have checked that the names in the CSR are ones this
+// agent may have (see package csrcheck). This function deliberately does not
+// re-derive that permission: two places deciding the same thing is how they
+// end up disagreeing.
+func (i *Issuer) ObtainForCSR(ctx context.Context, csr *x509.CertificateRequest, req Request) (*Result, error) {
+	if csr == nil {
+		return nil, fmt.Errorf("no certificate request")
+	}
+	acct, err := i.accounts.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load ACME account: %w", err)
+	}
+	client, err := newClient(acct, i.opts)
+	if err != nil {
+		return nil, err
+	}
+
+	provider := i.provider
+	if provider == nil {
+		if provider, err = newDNSProvider(i.dnsProvider); err != nil {
+			return nil, err
+		}
+	}
+	if err := client.Challenge.SetDNS01Provider(provider, i.dnsOptions...); err != nil {
+		return nil, fmt.Errorf("install DNS-01 solver: %w", err)
+	}
+
+	obtain := certificate.ObtainForCSRRequest{
+		CSR:     csr,
+		Bundle:  true,
+		Profile: req.Profile,
+	}
+	if req.Replaces != nil {
+		id, err := legoapi.MakeARICertID(req.Replaces)
+		if err != nil {
+			i.log.Warn("could not derive the ARI certificate id; renewing without the replaces hint",
+				slog.String("error", err.Error()))
+		} else {
+			obtain.ReplacesCertID = id
+		}
+	}
+
+	names := csr.DNSNames
+	if len(names) == 0 && csr.Subject.CommonName != "" {
+		names = []string{csr.Subject.CommonName}
+	}
+	release := i.zones.Acquire(challengeTarget(names))
+	defer release()
+
+	res, err := client.Certificate.ObtainForCSR(ctx, obtain)
+	if err != nil {
+		return nil, fmt.Errorf("obtain certificate for %s: %w", strings.Join(names, ", "), err)
+	}
+	// No PrivateKeyPEM here, and that is the point: there was never one to
+	// return. An empty field would be easy to fill in later by mistake, so the
+	// comment says why it stays empty.
+	return &Result{
+		CertificatePEM: res.Certificate,
+		IssuerPEM:      res.IssuerCertificate,
+	}, nil
+}

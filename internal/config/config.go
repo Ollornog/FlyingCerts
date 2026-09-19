@@ -40,6 +40,29 @@ type Config struct {
 	DNS DNSConfig `yaml:"dns"`
 	// Certificates are the certificates this broker keeps.
 	Certificates []CertificateConfig `yaml:"certificates"`
+	// Agents are the hosts allowed to ask, and what each may have.
+	Agents []AgentSpec `yaml:"agents"`
+	// Broker configures the agent-facing endpoint.
+	Broker BrokerConfig `yaml:"broker"`
+}
+
+// BrokerConfig configures the endpoint agents talk to.
+type BrokerConfig struct {
+	// Listen is the address to serve on, e.g. ":8443". Empty disables the
+	// endpoint, which is the state before M-2 was built and still useful for
+	// a broker driven only from a timer.
+	Listen string `yaml:"listen"`
+	// StateDir holds the agent CA, the token store and the agent state.
+	StateDir string `yaml:"state_dir"`
+	// AuditLog is where decisions are recorded.
+	AuditLog string `yaml:"audit_log"`
+	// IdentityLifetime is how long an agent identity is valid. Zero means the
+	// package default, which is deliberately short.
+	IdentityLifetime time.Duration `yaml:"identity_lifetime"`
+	// ServerCert and ServerKey are the endpoint's own TLS files. Agents verify
+	// the broker with the agent CA, so these are normally issued by it.
+	ServerCert string `yaml:"server_cert"`
+	ServerKey  string `yaml:"server_key"`
 }
 
 // ACMEConfig describes the certificate authority and our account with it.
@@ -176,6 +199,51 @@ func (c *Config) normaliseAndValidate() error {
 			}
 		}
 	}
+	if err := c.validateAgents(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateAgents checks the agent section against the configured certificates.
+//
+// An agent permitted a certificate that does not exist is refused at startup
+// rather than at three in the morning: it is always a typo, and the only
+// question is whether it is found now or when the host asks.
+func (c *Config) validateAgents() error {
+	if c.Broker.Listen == "" && len(c.Agents) == 0 {
+		return nil // no endpoint, no agents — a timer-driven broker
+	}
+	known := make(map[string]bool, len(c.Certificates))
+	for _, cert := range c.Certificates {
+		known[cert.Name] = true
+	}
+	seen := make(map[string]bool, len(c.Agents))
+	for i, a := range c.Agents {
+		where := fmt.Sprintf("agents[%d]", i)
+		if a.Name == "" {
+			return fmt.Errorf("%s: no name", where)
+		}
+		if seen[a.Name] {
+			return fmt.Errorf("%s: agent %q is configured twice", where, a.Name)
+		}
+		seen[a.Name] = true
+		if a.Mode != "issue" && a.Mode != "share" {
+			return fmt.Errorf("%s (%s): mode is %q, want \"issue\" or \"share\"", where, a.Name, a.Mode)
+		}
+		if len(a.Certificates) == 0 {
+			return fmt.Errorf("%s (%s): permitted no certificates", where, a.Name)
+		}
+		for _, certName := range a.Certificates {
+			if !known[certName] {
+				return fmt.Errorf("%s (%s): permitted %q, which is not a configured certificate",
+					where, a.Name, certName)
+			}
+		}
+	}
+	if c.Broker.Listen != "" && c.Broker.StateDir == "" {
+		return fmt.Errorf("broker.state_dir is empty, but broker.listen is set")
+	}
 	return nil
 }
 
@@ -201,4 +269,25 @@ func slicesContains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// DomainsFor implements brokerapi.Specs: which names a configured certificate
+// covers. The `issue` mode compares an agent's request against exactly this.
+func (c *Config) DomainsFor(certName string) ([]string, bool) {
+	for _, cert := range c.Certificates {
+		if cert.Name == certName {
+			return cert.Domains, true
+		}
+	}
+	return nil, false
+}
+
+// AgentSpecs is the agent section of the configuration.
+type AgentSpec struct {
+	// Name is the agent's identity, as it appears in its certificate.
+	Name string `yaml:"name"`
+	// Certificates are the store names this agent may have. Exact names.
+	Certificates []string `yaml:"certificates"`
+	// Mode is "issue" (recommended) or "share".
+	Mode string `yaml:"mode"`
 }

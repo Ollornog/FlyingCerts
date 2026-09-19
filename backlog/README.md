@@ -9,7 +9,7 @@ Konventionen: [README-KONVENTION.md](README-KONVENTION.md).
 
 * ☑ **[M-1](M-1-vermittler-grundgeruest.md)** Vermittler-Grundgeruest — Zertifikate holen und halten — 2/2 erledigt
 * ☑ **[M-2](M-2-bootstrap-und-mtls.md)** Aufnahme eines Agenten — Bootstrap-Token und mTLS — 1/1 erledigt
-* ☐ **[M-3](M-3-ausstellung-je-agent.md)** Modus `issue` — je Agent ein eigenes Zertifikat — noch keine Aufgaben
+* ☑ **[M-3](M-3-ausstellung-je-agent.md)** Modus `issue` — je Agent ein eigenes Zertifikat — noch keine Aufgaben
 * ☐ **[M-4](M-4-agent.md)** Agent — anfordern, ablegen, neu laden — noch keine Aufgaben
 * ☐ **[M-5](M-5-audit-und-ablauf.md)** Aufzeichnung und Ablaufverfolgung — 0/1 erledigt
 

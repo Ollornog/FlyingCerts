@@ -45,3 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delivery mode, identity renewal, and an append-only audit log.
 - Rate limiting on enrolment, keyed on the remote address rather than on
   anything the caller can choose, with a bounded counter store.
+- The `issue` mode: an agent sends a CSR and the broker obtains a certificate
+  for it, so the private key never leaves the host. Every name in the request
+  is checked against exactly what that agent is permitted — refused, never
+  trimmed, and refused before the CA is contacted.
