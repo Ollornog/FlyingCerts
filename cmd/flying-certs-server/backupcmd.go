@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/backup"
-	"github.com/Ollornog/flying-certs/internal/config"
-	"github.com/Ollornog/flying-certs/internal/version"
+	"github.com/Ollornog/FlyingCerts/internal/backup"
+	"github.com/Ollornog/FlyingCerts/internal/config"
+	"github.com/Ollornog/FlyingCerts/internal/version"
 )
 
 // cmdBackup writes an archive of everything the broker cannot recreate.
@@ -46,7 +46,7 @@ func cmdBackup(cfg *config.Config, out string, redact bool) error {
 
 	man, err := backup.Create(f, backup.PathsFor(cfg), backup.Options{
 		Redact: redact,
-		Tool:   "flying-certs/" + version.Version,
+		Tool:   "FlyingCerts/" + version.Version,
 	})
 	if err != nil {
 		return err

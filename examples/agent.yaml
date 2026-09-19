@@ -1,4 +1,4 @@
-# flying-certs agent configuration.
+# FlyingCerts agent configuration.
 #
 # Runs from a timer. Nothing happens when nothing changed — no write, no
 # reload — so running it every few minutes costs nothing.

@@ -109,7 +109,7 @@ type Options struct {
 	// Redact leaves private keys out. The result is for diagnosis and cannot
 	// be restored; Create marks it so and Restore honours the mark.
 	Redact bool
-	// Tool identifies the writer, e.g. "flying-certs/0.1.0".
+	// Tool identifies the writer, e.g. "FlyingCerts/0.1.0".
 	Tool string
 	// Now overrides the clock in tests.
 	Now func() time.Time
@@ -117,7 +117,7 @@ type Options struct {
 
 // redactedPlaceholder replaces a secret in a redacted archive. It is not valid
 // PEM, on purpose: anything that tries to use it fails loudly at once.
-const redactedPlaceholder = "[redacted by flying-certs backup -redact: this archive cannot be restored]\n"
+const redactedPlaceholder = "[redacted by FlyingCerts backup -redact: this archive cannot be restored]\n"
 
 // Create writes an archive of everything in paths to w.
 //
@@ -297,17 +297,17 @@ var ErrNotRestorable = errors.New(
 func Inspect(r io.Reader) (*Manifest, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return nil, fmt.Errorf("not a flying-certs backup: %w", err)
+		return nil, fmt.Errorf("not a FlyingCerts backup: %w", err)
 	}
 	defer gz.Close()
 
 	tr := tar.NewReader(gz)
 	hdr, err := tr.Next()
 	if err != nil {
-		return nil, fmt.Errorf("not a flying-certs backup: %w", err)
+		return nil, fmt.Errorf("not a FlyingCerts backup: %w", err)
 	}
 	if hdr.Name != manifestName {
-		return nil, fmt.Errorf("not a flying-certs backup: first entry is %q, expected %q",
+		return nil, fmt.Errorf("not a FlyingCerts backup: first entry is %q, expected %q",
 			hdr.Name, manifestName)
 	}
 	var man Manifest
@@ -328,14 +328,14 @@ func Inspect(r io.Reader) (*Manifest, error) {
 func Restore(r io.Reader, paths Paths) (*Manifest, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return nil, fmt.Errorf("not a flying-certs backup: %w", err)
+		return nil, fmt.Errorf("not a FlyingCerts backup: %w", err)
 	}
 	defer gz.Close()
 
 	tr := tar.NewReader(gz)
 	hdr, err := tr.Next()
 	if err != nil || hdr.Name != manifestName {
-		return nil, errors.New("not a flying-certs backup: no manifest")
+		return nil, errors.New("not a FlyingCerts backup: no manifest")
 	}
 	var man Manifest
 	if err := json.NewDecoder(io.LimitReader(tr, 1<<20)).Decode(&man); err != nil {

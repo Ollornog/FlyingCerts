@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/lifetime"
+	"github.com/Ollornog/FlyingCerts/internal/lifetime"
 )
 
 func newCA(t *testing.T) *CA {

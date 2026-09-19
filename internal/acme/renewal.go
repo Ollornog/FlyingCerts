@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/certinfo"
+	"github.com/Ollornog/FlyingCerts/internal/certinfo"
 	legoapi "github.com/go-acme/lego/v5/acme/api"
 )
 

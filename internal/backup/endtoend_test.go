@@ -35,17 +35,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/acme"
-	"github.com/Ollornog/flying-certs/internal/agent"
-	"github.com/Ollornog/flying-certs/internal/agentca"
-	"github.com/Ollornog/flying-certs/internal/backup"
-	"github.com/Ollornog/flying-certs/internal/brokerapi"
-	"github.com/Ollornog/flying-certs/internal/certinfo"
-	"github.com/Ollornog/flying-certs/internal/certstore"
-	"github.com/Ollornog/flying-certs/internal/config"
-	"github.com/Ollornog/flying-certs/internal/enroll"
-	"github.com/Ollornog/flying-certs/internal/pebbletest"
-	"github.com/Ollornog/flying-certs/internal/registry"
+	"github.com/Ollornog/FlyingCerts/internal/acme"
+	"github.com/Ollornog/FlyingCerts/internal/agent"
+	"github.com/Ollornog/FlyingCerts/internal/agentca"
+	"github.com/Ollornog/FlyingCerts/internal/backup"
+	"github.com/Ollornog/FlyingCerts/internal/brokerapi"
+	"github.com/Ollornog/FlyingCerts/internal/certinfo"
+	"github.com/Ollornog/FlyingCerts/internal/certstore"
+	"github.com/Ollornog/FlyingCerts/internal/config"
+	"github.com/Ollornog/FlyingCerts/internal/enroll"
+	"github.com/Ollornog/FlyingCerts/internal/pebbletest"
+	"github.com/Ollornog/FlyingCerts/internal/registry"
 	"github.com/go-acme/lego/v5/certcrypto"
 )
 
@@ -136,7 +136,7 @@ func newIssuer(t *testing.T, cfg *config.Config) (*acme.AccountStore, *acme.Issu
 	opts := acme.ClientOptions{
 		DirectoryURL: pebbletest.DirectoryURL,
 		HTTPClient:   pebbletest.HTTPClient(),
-		UserAgent:    "flying-certs-backup-test",
+		UserAgent:    "FlyingCerts-backup-test",
 	}
 	if !accounts.Exists() {
 		return accounts, nil
@@ -176,7 +176,7 @@ func TestRestoredBrokerRenewsAndDelivers(t *testing.T) {
 	opts := acme.ClientOptions{
 		DirectoryURL: pebbletest.DirectoryURL,
 		HTTPClient:   pebbletest.HTTPClient(),
-		UserAgent:    "flying-certs-backup-test",
+		UserAgent:    "FlyingCerts-backup-test",
 	}
 	if _, err := accounts.Register(ctx, opts, "admin@example.com", certcrypto.EC256); err != nil {
 		t.Fatalf("Register: %v", err)
@@ -332,7 +332,7 @@ func writeArchive(t *testing.T, path string, cfg *config.Config) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	man, err := backup.Create(f, backup.PathsFor(cfg), backup.Options{Tool: "flying-certs-test"})
+	man, err := backup.Create(f, backup.PathsFor(cfg), backup.Options{Tool: "FlyingCerts-test"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

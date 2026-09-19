@@ -11,16 +11,16 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/acme"
-	"github.com/Ollornog/flying-certs/internal/agentca"
-	"github.com/Ollornog/flying-certs/internal/atomicfile"
-	"github.com/Ollornog/flying-certs/internal/brokerapi"
-	"github.com/Ollornog/flying-certs/internal/certstore"
-	"github.com/Ollornog/flying-certs/internal/config"
-	"github.com/Ollornog/flying-certs/internal/enroll"
-	"github.com/Ollornog/flying-certs/internal/lifetime"
-	"github.com/Ollornog/flying-certs/internal/registry"
-	"github.com/Ollornog/flying-certs/internal/version"
+	"github.com/Ollornog/FlyingCerts/internal/acme"
+	"github.com/Ollornog/FlyingCerts/internal/agentca"
+	"github.com/Ollornog/FlyingCerts/internal/atomicfile"
+	"github.com/Ollornog/FlyingCerts/internal/brokerapi"
+	"github.com/Ollornog/FlyingCerts/internal/certstore"
+	"github.com/Ollornog/FlyingCerts/internal/config"
+	"github.com/Ollornog/FlyingCerts/internal/enroll"
+	"github.com/Ollornog/FlyingCerts/internal/lifetime"
+	"github.com/Ollornog/FlyingCerts/internal/registry"
+	"github.com/Ollornog/FlyingCerts/internal/version"
 )
 
 // Defaults for the review thresholds.

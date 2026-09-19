@@ -298,7 +298,7 @@ func TestManifestRecordsWhenItWasTaken(t *testing.T) {
 	_, paths, _ := buildState(t)
 	at := time.Date(2026, 9, 20, 3, 14, 15, 0, time.UTC)
 	var archive bytes.Buffer
-	man, err := Create(&archive, paths, Options{Tool: "flying-certs/test", Now: func() time.Time { return at }})
+	man, err := Create(&archive, paths, Options{Tool: "FlyingCerts/test", Now: func() time.Time { return at }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestManifestRecordsWhenItWasTaken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !read.CreatedAt.Equal(at) || read.Tool != "flying-certs/test" {
+	if !read.CreatedAt.Equal(at) || read.Tool != "FlyingCerts/test" {
 		t.Errorf("manifest read back as %+v", read)
 	}
 }

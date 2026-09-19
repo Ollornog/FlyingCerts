@@ -36,8 +36,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/atomicfile"
-	"github.com/Ollornog/flying-certs/internal/certinfo"
+	"github.com/Ollornog/FlyingCerts/internal/atomicfile"
+	"github.com/Ollornog/FlyingCerts/internal/certinfo"
 )
 
 // Target describes where a certificate goes and how to make it take effect.

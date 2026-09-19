@@ -36,4 +36,4 @@ hast, folge bitte [SECURITY.de.md](SECURITY.de.md), statt einen Pull Request zu 
 
 Mit deiner Teilnahme stimmst du dem [Verhaltenskodex](CODE_OF_CONDUCT.de.md) zu.
 <br /><br />
-<p align="right"><img src="../docs/flying-certs.png" alt="flying-certs" width="60" height="60"></p>
+<p align="right"><img src="../docs/flying-certs.png" alt="FlyingCerts" width="60" height="60"></p>

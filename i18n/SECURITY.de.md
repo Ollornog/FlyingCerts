@@ -7,7 +7,7 @@
 
 Bitte melde Sicherheitsprobleme **vertraulich**, nicht als öffentliches Issue.
 
-- Bevorzugt: GitHubs [private Schwachstellenmeldung](https://github.com/Ollornog/flying-certs/security/advisories/new)
+- Bevorzugt: GitHubs [private Schwachstellenmeldung](https://github.com/Ollornog/FlyingCerts/security/advisories/new)
 - Alternativ per E-Mail: flying-certs-github@ollornog.de
 
 Bitte schreib dazu, was du getan hast, was du erwartet hast und was stattdessen passiert ist, dazu
@@ -35,4 +35,4 @@ Punkten sind besonders willkommen:
 - Ein Agent kann auf dem Vermittler mehr lesen oder schreiben als seine eigenen Zertifikate.
 - Die Aufzeichnung ist unvollständig oder fälschbar.
 <br /><br />
-<p align="right"><img src="../docs/flying-certs.png" alt="flying-certs" width="60" height="60"></p>
+<p align="right"><img src="../docs/flying-certs.png" alt="FlyingCerts" width="60" height="60"></p>

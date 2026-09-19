@@ -16,7 +16,7 @@ package registry
 import (
 	"errors"
 	"fmt"
-	"github.com/Ollornog/flying-certs/internal/lifetime"
+	"github.com/Ollornog/FlyingCerts/internal/lifetime"
 	"sort"
 	"strings"
 	"sync"

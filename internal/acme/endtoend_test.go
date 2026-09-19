@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/certinfo"
-	"github.com/Ollornog/flying-certs/internal/pebbletest"
+	"github.com/Ollornog/FlyingCerts/internal/certinfo"
+	"github.com/Ollornog/FlyingCerts/internal/pebbletest"
 	"github.com/go-acme/lego/v5/certcrypto"
 )
 
@@ -35,7 +35,7 @@ func TestEndToEndAgainstPebble(t *testing.T) {
 	opts := ClientOptions{
 		DirectoryURL: pebbletest.DirectoryURL,
 		HTTPClient:   pebbletest.HTTPClient(),
-		UserAgent:    "flying-certs-test",
+		UserAgent:    "FlyingCerts-test",
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

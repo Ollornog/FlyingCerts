@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/certinfo"
+	"github.com/Ollornog/FlyingCerts/internal/certinfo"
 )
 
 // tlsCertificate is an alias so broker.go reads without importing crypto/tls

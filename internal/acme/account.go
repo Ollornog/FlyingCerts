@@ -25,7 +25,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Ollornog/flying-certs/internal/atomicfile"
+	"github.com/Ollornog/FlyingCerts/internal/atomicfile"
 	"github.com/go-acme/lego/v5/acme"
 	"github.com/go-acme/lego/v5/certcrypto"
 	"github.com/go-acme/lego/v5/registration"

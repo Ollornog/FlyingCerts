@@ -17,12 +17,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/agent"
-	"github.com/Ollornog/flying-certs/internal/deploy"
-	"github.com/Ollornog/flying-certs/internal/version"
+	"github.com/Ollornog/FlyingCerts/internal/agent"
+	"github.com/Ollornog/FlyingCerts/internal/deploy"
+	"github.com/Ollornog/FlyingCerts/internal/version"
 )
 
-const usage = `flying-certs-agent %s — collect certificates from a flying-certs broker
+const usage = `flying-certs-agent %s — collect certificates from a FlyingCerts broker
 
 Usage:
   flying-certs-agent [-config PATH] <command>

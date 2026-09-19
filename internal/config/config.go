@@ -18,9 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/acme"
-	"github.com/Ollornog/flying-certs/internal/certstore"
-	"github.com/Ollornog/flying-certs/internal/lifetime"
+	"github.com/Ollornog/FlyingCerts/internal/acme"
+	"github.com/Ollornog/FlyingCerts/internal/certstore"
+	"github.com/Ollornog/FlyingCerts/internal/lifetime"
 	"go.yaml.in/yaml/v3"
 )
 

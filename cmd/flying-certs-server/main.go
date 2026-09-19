@@ -18,11 +18,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/acme"
-	"github.com/Ollornog/flying-certs/internal/certinfo"
-	"github.com/Ollornog/flying-certs/internal/certstore"
-	"github.com/Ollornog/flying-certs/internal/config"
-	"github.com/Ollornog/flying-certs/internal/version"
+	"github.com/Ollornog/FlyingCerts/internal/acme"
+	"github.com/Ollornog/FlyingCerts/internal/certinfo"
+	"github.com/Ollornog/FlyingCerts/internal/certstore"
+	"github.com/Ollornog/FlyingCerts/internal/config"
+	"github.com/Ollornog/FlyingCerts/internal/version"
 	"github.com/go-acme/lego/v5/certcrypto"
 )
 
@@ -132,7 +132,7 @@ func run() error {
 	clientOpts := acme.ClientOptions{
 		DirectoryURL:    cfg.ACME.Directory,
 		FinalizeTimeout: cfg.ACME.FinalizeTimeout,
-		UserAgent:       "flying-certs/" + version.Version,
+		UserAgent:       "FlyingCerts/" + version.Version,
 	}
 
 	// Ctrl-C and SIGTERM cancel the work in flight instead of killing it

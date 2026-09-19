@@ -42,7 +42,7 @@ func (a *FileAuditor) Record(e Event) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := a.enc.Encode(e); err != nil {
-		fmt.Fprintf(os.Stderr, "flying-certs: could not write an audit event: %v\n", err)
+		fmt.Fprintf(os.Stderr, "FlyingCerts: could not write an audit event: %v\n", err)
 	}
 }
 

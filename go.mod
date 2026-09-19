@@ -1,4 +1,4 @@
-module github.com/Ollornog/flying-certs
+module github.com/Ollornog/FlyingCerts
 
 go 1.27
 

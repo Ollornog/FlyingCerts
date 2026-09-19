@@ -3,7 +3,7 @@ package backup
 import (
 	"path/filepath"
 
-	"github.com/Ollornog/flying-certs/internal/config"
+	"github.com/Ollornog/FlyingCerts/internal/config"
 )
 
 // PathsFor works out where this host keeps each area.

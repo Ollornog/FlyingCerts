@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Ollornog/flying-certs/internal/atomicfile"
+	"github.com/Ollornog/FlyingCerts/internal/atomicfile"
 )
 
 // FileState keeps agent state in one JSON file.

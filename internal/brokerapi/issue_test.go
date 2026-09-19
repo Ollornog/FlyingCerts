@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Ollornog/flying-certs/internal/acme"
+	"github.com/Ollornog/FlyingCerts/internal/acme"
 )
 
 // fixedSpecs is the configured set of names per certificate.

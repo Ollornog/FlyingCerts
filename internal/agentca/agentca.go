@@ -31,8 +31,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/atomicfile"
-	"github.com/Ollornog/flying-certs/internal/lifetime"
+	"github.com/Ollornog/FlyingCerts/internal/atomicfile"
+	"github.com/Ollornog/FlyingCerts/internal/lifetime"
 )
 
 // DefaultAgentLifetime is how long an agent's identity is valid when nothing
@@ -130,7 +130,7 @@ func Create(dir string) (*CA, error) {
 	now := time.Now().UTC()
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "flying-certs agent CA"},
+		Subject:      pkix.Name{CommonName: "FlyingCerts agent CA"},
 		NotBefore:    now.Add(-time.Hour), // tolerate a little clock skew
 		NotAfter:     now.Add(rootLifetime),
 		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign,

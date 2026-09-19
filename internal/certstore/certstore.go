@@ -20,8 +20,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/atomicfile"
-	"github.com/Ollornog/flying-certs/internal/certinfo"
+	"github.com/Ollornog/FlyingCerts/internal/atomicfile"
+	"github.com/Ollornog/FlyingCerts/internal/certinfo"
 )
 
 // ErrNotFound reports that no certificate is stored under that name.

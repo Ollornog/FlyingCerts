@@ -8,7 +8,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/Ollornog/flying-certs/internal/config"
+	"github.com/Ollornog/FlyingCerts/internal/config"
 )
 
 // Every configuration field that names a place on disk is either in the backup

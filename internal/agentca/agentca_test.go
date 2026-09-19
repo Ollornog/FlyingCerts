@@ -8,7 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
-	"github.com/Ollornog/flying-certs/internal/lifetime"
+	"github.com/Ollornog/FlyingCerts/internal/lifetime"
 	"os"
 	"path/filepath"
 	"strings"

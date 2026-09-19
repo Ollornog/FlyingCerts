@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/lifetime"
+	"github.com/Ollornog/FlyingCerts/internal/lifetime"
 )
 
 func reviewOf(t *testing.T, agents []Agent, setup func(*Registry, time.Time), now time.Time) []Finding {

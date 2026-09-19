@@ -1,4 +1,4 @@
-# flying-certs broker configuration.
+# FlyingCerts broker configuration.
 #
 # Unknown keys are rejected rather than ignored: a typo must not leave a
 # setting quietly at its default.

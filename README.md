@@ -1,11 +1,11 @@
-<p align="center"><img src="docs/flying-certs.png" alt="flying-certs" width="250" height="250"></p>
+<p align="center"><img src="docs/flying-certs.png" alt="FlyingCerts" width="250" height="250"></p>
 
-<h1 align="center">flying-certs</h1>
+<h1 align="center">FlyingCerts</h1>
 
 <p align="center"><b>English</b> · <a href="i18n/README.de.md">Deutsch</a></p>
 
 <p align="right">
-<a href="https://github.com/Ollornog/flying-certs/actions/workflows/ci.yml"><img src="https://github.com/Ollornog/flying-certs/actions/workflows/ci.yml/badge.svg" alt="tests"></a>
+<a href="https://github.com/Ollornog/FlyingCerts/actions/workflows/ci.yml"><img src="https://github.com/Ollornog/FlyingCerts/actions/workflows/ci.yml/badge.svg" alt="tests"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-informational.svg" alt="License: MIT"></a>
 <img src="https://img.shields.io/badge/go-1.27%2B-00ADD8.svg" alt="Go">
 </p>
@@ -21,7 +21,7 @@ browser trusts, because your domain is HSTS-preloaded or your users carry phones
 - **Want to know which host is about to run out?** → the broker knows, because it issued each one.
 - **Already running your own ACME on every host?** → then you don't need this. Keep doing that.
 
-> **A quick word on positioning:** flying-certs is **not a CA** and **not an ACME server**. It talks
+> **A quick word on positioning:** FlyingCerts is **not a CA** and **not an ACME server**. It talks
 > to a real ACME CA on behalf of hosts that cannot, and hands the result to the host that asked.
 > So it is **no replacement** for step-ca or Vault PKI — those give you your *own* trust root.
 > This one gets you certificates the *public* already trusts.
@@ -51,10 +51,10 @@ browser trusts, because your domain is HSTS-preloaded or your users carry phones
 
 ## Installation
 
-Binaries for Linux are attached to each [release](https://github.com/Ollornog/flying-certs/releases):
+Binaries for Linux are attached to each [release](https://github.com/Ollornog/FlyingCerts/releases):
 
 ```bash
-curl -fsSLO https://github.com/Ollornog/flying-certs/releases/latest/download/SHA256SUMS
+curl -fsSLO https://github.com/Ollornog/FlyingCerts/releases/latest/download/SHA256SUMS
 sha256sum -c SHA256SUMS         # verify before you run it
 ```
 

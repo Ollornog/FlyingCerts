@@ -103,6 +103,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was wrong by a decade.
 
 ### Changed
+- Renamed from `flying-certs` to **FlyingCerts**, matching how the other
+  projects here are named. The Go module path moved with it
+  (`github.com/Ollornog/FlyingCerts`) and GitHub redirects the old repository
+  URL. What stayed lower-case: the commands (`flying-certs-server`,
+  `flying-certs-agent`), the paths under `/etc` and `/var`, and the contact
+  address — those are Unix conventions, not the project's name.
 - The README no longer claims a bootstrap token is bound to the CSR it will be
   redeemed with. It cannot be: the agent generates its key only at redemption.
   ADR-6 records the correction.

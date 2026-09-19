@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Ollornog/flying-certs/internal/atomicfile"
+	"github.com/Ollornog/FlyingCerts/internal/atomicfile"
 )
 
 // safeID guards the one place a caller-supplied string becomes a filename.
