@@ -19,12 +19,12 @@ func logged(secrets []string, fn func(*slog.Logger)) string {
 // The exact shape of certwarden#144: the credential appears inside a free-form
 // message that nobody marked as sensitive.
 func TestSecretInAPlainMessageIsRemoved(t *testing.T) {
-	const token = "dns-provider-token-abc123"
-	out := logged([]string{token}, func(l *slog.Logger) {
-		l.Info("calling provider API with credentials " + token + " for zone example.com")
+	const planted = "PLACEHOLDER-dns-provider-value"
+	out := logged([]string{planted}, func(l *slog.Logger) {
+		l.Info("calling provider API with credentials " + planted + " for zone example.com")
 	})
 
-	if strings.Contains(out, token) {
+	if strings.Contains(out, planted) {
 		t.Errorf("the secret survived in the message:\n%s", out)
 	}
 	if !strings.Contains(out, redactedMarker) {
@@ -38,34 +38,34 @@ func TestSecretInAPlainMessageIsRemoved(t *testing.T) {
 }
 
 func TestSecretInAnAttributeValueIsRemoved(t *testing.T) {
-	const secret = "s3cret-value-long-enough"
-	out := logged([]string{secret}, func(l *slog.Logger) {
-		l.Info("request failed", slog.String("url", "https://api.example.com/?auth="+secret))
+	const planted = "PLACEHOLDER-value-in-a-url"
+	out := logged([]string{planted}, func(l *slog.Logger) {
+		l.Info("request failed", slog.String("url", "https://api.example.com/?auth="+planted))
 	})
-	if strings.Contains(out, secret) {
+	if strings.Contains(out, planted) {
 		t.Errorf("the secret survived inside a URL:\n%s", out)
 	}
 }
 
 func TestSecretInsideAnErrorIsRemoved(t *testing.T) {
-	const secret = "another-long-secret-1"
-	err := errors.New("authentication with " + secret + " was rejected")
-	out := logged([]string{secret}, func(l *slog.Logger) {
+	const planted = "PLACEHOLDER-inside-an-error"
+	err := errors.New("authentication with " + planted + " was rejected")
+	out := logged([]string{planted}, func(l *slog.Logger) {
 		l.Error("provider error", slog.Any("err", err))
 	})
-	if strings.Contains(out, secret) {
+	if strings.Contains(out, planted) {
 		t.Errorf("the secret survived inside an error:\n%s", out)
 	}
 }
 
 func TestSecretInAGroupIsRemoved(t *testing.T) {
-	const secret = "grouped-secret-value"
-	out := logged([]string{secret}, func(l *slog.Logger) {
+	const planted = "PLACEHOLDER-one-level-down"
+	out := logged([]string{planted}, func(l *slog.Logger) {
 		l.Info("config", slog.Group("provider",
 			slog.String("name", "example"),
-			slog.String("endpoint", "https://api.example.com/"+secret)))
+			slog.String("endpoint", "https://api.example.com/"+planted)))
 	})
-	if strings.Contains(out, secret) {
+	if strings.Contains(out, planted) {
 		t.Errorf("the secret survived one level down in a group:\n%s", out)
 	}
 	if !strings.Contains(out, "example") {
@@ -90,23 +90,23 @@ func TestSensitiveKeyIsWithheldEvenIfUnknown(t *testing.T) {
 }
 
 func TestWithAttrsAndWithGroupKeepRedacting(t *testing.T) {
-	const secret = "persistent-secret-xyz"
+	const planted = "PLACEHOLDER-derived-logger"
 
 	// slog.With and WithGroup return new handlers — the redaction must survive
 	// that, otherwise a logger derived once leaks from then on.
-	out := logged([]string{secret}, func(l *slog.Logger) {
+	out := logged([]string{planted}, func(l *slog.Logger) {
 		l.With(slog.String("component", "dns")).
 			WithGroup("call").
-			Info("sending " + secret)
+			Info("sending " + planted)
 	})
-	if strings.Contains(out, secret) {
+	if strings.Contains(out, planted) {
 		t.Errorf("the secret survived a derived logger:\n%s", out)
 	}
 
-	out = logged([]string{secret}, func(l *slog.Logger) {
-		l.With(slog.String("endpoint", "https://x.example.com/"+secret)).Info("ready")
+	out = logged([]string{planted}, func(l *slog.Logger) {
+		l.With(slog.String("endpoint", "https://x.example.com/"+planted)).Info("ready")
 	})
-	if strings.Contains(out, secret) {
+	if strings.Contains(out, planted) {
 		t.Errorf("the secret survived in an attribute bound via With:\n%s", out)
 	}
 }
@@ -126,11 +126,11 @@ func TestVeryShortSecretsAreIgnored(t *testing.T) {
 }
 
 func TestSeveralSecretsAtOnce(t *testing.T) {
-	secrets := []string{"first-secret-value", "second-secret-value"}
-	out := logged(secrets, func(l *slog.Logger) {
-		l.Info("using first-secret-value and second-secret-value together")
+	planted := []string{"first-example-value", "second-example-value"}
+	out := logged(planted, func(l *slog.Logger) {
+		l.Info("using first-example-value and second-example-value together")
 	})
-	for _, s := range secrets {
+	for _, s := range planted {
 		if strings.Contains(out, s) {
 			t.Errorf("secret %q survived:\n%s", s, out)
 		}
@@ -138,8 +138,8 @@ func TestSeveralSecretsAtOnce(t *testing.T) {
 }
 
 func TestRedactorDoesNotRevealItselfWhenPrinted(t *testing.T) {
-	r := NewRedactor(slog.NewTextHandler(&bytes.Buffer{}, nil), "a-secret-value-here")
-	if strings.Contains(r.String(), "a-secret-value-here") {
+	r := NewRedactor(slog.NewTextHandler(&bytes.Buffer{}, nil), "PLACEHOLDER-when-printed")
+	if strings.Contains(r.String(), "PLACEHOLDER-when-printed") {
 		t.Errorf("printing the redactor revealed a secret: %s", r.String())
 	}
 }
