@@ -22,6 +22,7 @@ import (
 	"github.com/Ollornog/FlyingCerts/internal/agentca"
 	"github.com/Ollornog/FlyingCerts/internal/certstore"
 	"github.com/Ollornog/FlyingCerts/internal/enroll"
+	"github.com/Ollornog/FlyingCerts/internal/lifetime"
 	"github.com/Ollornog/FlyingCerts/internal/registry"
 )
 
@@ -102,18 +103,39 @@ func newCSR(t *testing.T) (csrPEM string, key *ecdsa.PrivateKey) {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der})), key
 }
 
-// withIdentity fakes a verified mTLS connection carrying agentName.
+// withIdentity puts a real identity on the request, issued by the harness's
+// own CA.
+//
+// It used to hand over a self-signed certificate in VerifiedChains — telling
+// the server "the TLS layer already checked this" about something nothing had
+// checked. That worked while the TLS layer really did the verifying. Since
+// ADR-18 the server verifies for itself, and a faked chain is refused, which
+// is the correct answer and makes these tests mean what they say: the
+// certificate here is one the CA would actually have issued.
 func withIdentity(r *http.Request, ca *agentca.CA, agentName string) *http.Request {
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: agentName},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
 	}
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	der, _ := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	cert, _ := x509.ParseCertificate(der)
-	r.TLS = &tls.ConnectionState{VerifiedChains: [][]*x509.Certificate{{cert}}}
+	csrDER, err := x509.CreateCertificateRequest(rand.Reader,
+		&x509.CertificateRequest{Subject: pkix.Name{CommonName: agentName}}, key)
+	if err != nil {
+		panic(err)
+	}
+	csr, err := x509.ParseCertificateRequest(csrDER)
+	if err != nil {
+		panic(err)
+	}
+	certPEM, _, err := agentca.SignAgent(ca, agentName, csr, lifetime.Of(time.Hour))
+	if err != nil {
+		panic(err)
+	}
+	block, _ := pem.Decode(certPEM)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		panic(err)
+	}
+	r.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}}
 	return r
 }
 
@@ -144,11 +166,15 @@ func TestEveryRouteButEnrolRequiresAClientCertificate(t *testing.T) {
 
 	routes := []struct{ method, path string }{
 		{"POST", "/v1/enroll"},
+		{"POST", "/v1/identity/request"},
 		{"GET", "/v1/certificates/gateway-cert"},
 		{"POST", "/v1/certificates/gateway-cert/issue"},
 		{"POST", "/v1/identity/renew"},
 		{"GET", "/v1/whoami"},
 	}
+	// The device-key route is reachable without an identity but not without a
+	// certificate, so it belongs with the protected ones here: a caller with
+	// nothing to present must be turned away.
 	open := map[string]bool{"/v1/enroll": true}
 
 	for _, rt := range routes {
@@ -158,8 +184,10 @@ func TestEveryRouteButEnrolRequiresAClientCertificate(t *testing.T) {
 
 		// The distinction that matters: a 401 for a missing certificate, not a
 		// 401 for a missing token. Checking only the status code would let a
-		// route pass because it happens to reject empty input.
-		gated := strings.Contains(rec.Body.String(), ErrNeedClientCert)
+		// route pass because it happens to reject empty input. Each gate has
+		// its own wording because each has its own remedy.
+		gated := strings.Contains(rec.Body.String(), ErrNeedClientCert) ||
+			strings.Contains(rec.Body.String(), ErrNeedDeviceCert)
 
 		if open[rt.path] {
 			if gated {
@@ -173,9 +201,14 @@ func TestEveryRouteButEnrolRequiresAClientCertificate(t *testing.T) {
 		}
 	}
 
-	// And the server's own idea of which routes are open must match.
+	// And the server's own idea of which routes are which must match. Two
+	// lists, both exact: a route that quietly moved between them is the kind
+	// of change that looks harmless in a diff.
 	if got := h.srv.OpenPaths(); len(got) != 1 || got[0] != "/v1/enroll" {
 		t.Errorf("OpenPaths() = %v, want exactly [/v1/enroll]", got)
+	}
+	if got := h.srv.DevicePaths(); len(got) != 1 || got[0] != "/v1/identity/request" {
+		t.Errorf("DevicePaths() = %v, want exactly [/v1/identity/request]", got)
 	}
 }
 
@@ -437,14 +470,17 @@ func TestOversizedBodyIsRefused(t *testing.T) {
 	}
 }
 
-func TestTLSConfigDemandsOurCA(t *testing.T) {
+// The TLS layer now asks for a certificate without judging it, because the
+// device-key route presents one that is deliberately not from our CA
+// (ADR-18). This test states that new contract — and everything below it
+// checks the guarantee that moved into our own code as a result, which is
+// the part that actually keeps strangers out.
+func TestTLSConfigAsksForACertificateWithoutJudgingIt(t *testing.T) {
 	h := setup(t)
 	cfg := h.srv.TLSConfig(tls.Certificate{})
-	if cfg.ClientAuth != tls.VerifyClientCertIfGiven {
-		t.Errorf("ClientAuth = %v", cfg.ClientAuth)
-	}
-	if cfg.ClientCAs == nil {
-		t.Error("no client CA pool — any certificate would verify")
+	if cfg.ClientAuth != tls.RequestClientCert {
+		t.Errorf("ClientAuth = %v, want RequestClientCert — VerifyClientCertIfGiven "+
+			"would abort the handshake on a device key", cfg.ClientAuth)
 	}
 	if cfg.MinVersion < tls.VersionTLS12 {
 		t.Errorf("MinVersion = %x, want at least TLS 1.2", cfg.MinVersion)

@@ -16,6 +16,7 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"github.com/Ollornog/FlyingCerts/internal/keyfp"
 	"github.com/Ollornog/FlyingCerts/internal/lifetime"
 	"sort"
 	"strings"
@@ -42,6 +43,9 @@ type Agent struct {
 	// Mode says what the agent receives: the certificate alone, or the
 	// certificate with its private key.
 	Mode DeliveryMode
+	// PublicKey is the fingerprint of this agent's device key, or empty when
+	// the agent is only allowed in with a bootstrap token.
+	PublicKey string
 	// IdentityLifetime is how long this agent's identity is issued for.
 	// Unset means the broker-wide setting, and that the package default.
 	IdentityLifetime lifetime.Span
@@ -89,8 +93,10 @@ type State struct {
 type Registry struct {
 	mu     sync.RWMutex
 	agents map[string]Agent
-	state  map[string]*State
-	store  StateStore
+	// byKey maps a device-key fingerprint to the agent it authorises.
+	byKey map[string]string
+	state map[string]*State
+	store StateStore
 }
 
 // StateStore persists the part that outlives a restart. Left nil, the registry
@@ -104,6 +110,7 @@ type StateStore interface {
 func New(agents []Agent, store StateStore) (*Registry, error) {
 	r := &Registry{
 		agents: make(map[string]Agent, len(agents)),
+		byKey:  make(map[string]string, len(agents)),
 		state:  make(map[string]*State, len(agents)),
 		store:  store,
 	}
@@ -121,6 +128,16 @@ func New(agents []Agent, store StateStore) (*Registry, error) {
 		if len(a.Certificates) == 0 {
 			return nil, fmt.Errorf("agent %q is permitted no certificates — then it has no reason to exist",
 				a.Name)
+		}
+		if a.PublicKey != "" {
+			fp := keyfp.Canonical(a.PublicKey)
+			if other, taken := r.byKey[fp]; taken {
+				// One key, one agent. Otherwise the identity handed out would
+				// depend on which name the caller asked for, which turns an
+				// authorisation decision over to the caller.
+				return nil, fmt.Errorf("agents %q and %q share a device key", other, a.Name)
+			}
+			r.byKey[fp] = a.Name
 		}
 		a.Certificates = append([]string(nil), a.Certificates...)
 		sort.Strings(a.Certificates)
@@ -178,6 +195,24 @@ func (r *Registry) Authorise(agentName, certName string) (Agent, error) {
 	}
 	return Agent{}, fmt.Errorf("%q may not have %q: %w", agentName, certName, ErrNotPermitted)
 }
+
+// ByPublicKey finds the agent a device key belongs to.
+//
+// Returns ErrUnknownKey rather than a bare miss, so a caller cannot mistake
+// "no such key" for "an agent with an empty name" — the difference between
+// refusing a stranger and letting one in.
+func (r *Registry) ByPublicKey(fingerprint string) (Agent, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	name, ok := r.byKey[keyfp.Canonical(fingerprint)]
+	if !ok {
+		return Agent{}, ErrUnknownKey
+	}
+	return r.agents[name], nil
+}
+
+// ErrUnknownKey means no configured agent claims this device key.
+var ErrUnknownKey = errors.New("this device key is not authorised for any agent")
 
 // Revoked reports whether an agent is shut out.
 func (r *Registry) Revoked(agentName string) bool {

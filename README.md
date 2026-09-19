@@ -99,18 +99,57 @@ credentials work.
 
 ## How a host joins
 
-No long-lived shared secret, and no login on the broker.
+No shared secret, and no login on the broker. The host keeps a key, you are told its fingerprint —
+the same arrangement as `authorized_keys`.
 
-1. You issue a **bootstrap token** on the broker for a named host. Single-use, short-lived, and bound
-   to that name and to the broker's own CA. It is *not* bound to the CSR: the agent generates its key
-   only when it redeems the token, so there is nothing to bind to yet. ADR-6 records that correction
-   rather than hiding it — a promise a protocol cannot keep is worse than one never made.
-2. The agent redeems it **once** and receives its own client certificate.
-3. From then on it authenticates by **mTLS** — nothing else is accepted.
-4. It renews that certificate well before expiry, so it cannot lock itself out.
+```bash
+# on the host
+flying-certs-agent keygen
+#   SHA256:3zCYV58KfoUQglgefqPRMl1I+EvvbaaGpYAUuLjK8Y4
+```
 
-If it *does* expire, there is no automatic way back: an expired certificate cannot authenticate to
-ask for its own replacement. That is deliberate, and the broker warns you long before it happens.
+```yaml
+# on the broker
+agents:
+  - name: gateway
+    certificates: [gateway]
+    mode: issue
+    public_key: "SHA256:3zCYV58KfoUQglgefqPRMl1I+EvvbaaGpYAUuLjK8Y4"
+```
+
+```bash
+# back on the host, once
+flying-certs-agent enrol -broker-ca broker-ca.crt
+```
+
+1. The agent generates a **device key** on first run. The private half never leaves the host — what
+   travels is a signature inside a TLS handshake, never the secret itself.
+2. You authorise the host by putting the fingerprint in the broker's configuration. A fingerprint is
+   public; pasting it into a ticket or a chat costs you nothing.
+3. The agent asks for an **identity** with that key and authenticates by **mTLS** from then on.
+4. It renews the identity long before expiry — and if that ever fails, it asks again with the device
+   key. **There is no state a host can end up in that needs someone to log into it.**
+
+That last point is the one worth having. A machine switched off over a holiday comes back after its
+identity has expired; with a device key it simply asks for a new one on its next run.
+
+### Bootstrap tokens, the other way in
+
+If you would rather not fetch a fingerprint off the host first, issue a single-use token instead:
+
+```bash
+flying-certs-server token -agent gateway     # 5 minutes, one use
+flying-certs-agent enrol -token <token> -broker-ca broker-ca.crt
+```
+
+It is the weaker arrangement, and worth knowing why: a token is a secret that has to travel, and it
+cannot help a host whose identity has already expired — by then the token is long gone too. It is
+bound to the agent's name and to the broker's CA, but *not* to the CSR: the agent generates its key
+only when it redeems the token, so at issuing time there is nothing to bind to. ADR-6 records that
+correction rather than hiding it; a promise a protocol cannot keep is worse than one never made.
+
+Nothing stops you using both — a token to get started and a device key so the host stays
+self-sufficient. `keygen` can be run at any time.
 
 ## Two delivery modes
 
@@ -174,11 +213,15 @@ worth being plain about what that means:
 - **A copied key stays valid.** With a 30-day identity, a copy expires by itself, and each renewal
   is a regular occasion for something to look wrong. Unlimited removes that occasion.
 
-It exists anyway, because the opposite failure is real: an identity that expires on a machine nobody
-can reach locks it out for good ([ADR-7](backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)), and an
-outage that needs a person in a car costs more than a certificate that lasts. The choice is yours;
-the tool's job is to keep it visible. So `check` reports every unlimited identity — and does not
-fail because of one. A standing state that goes red every run trains people to stop reading the
+**With a device key you almost certainly do not want this.** `unlimited` exists because an identity
+that expires on a machine nobody can reach used to lock it out for good
+([ADR-7](backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) — that was the reason to reach for it. A
+device key removes the reason: the host can ask for a fresh identity whenever it wakes up, so a
+short lifetime costs nothing and a stolen identity is worth a day rather than a decade.
+
+It stays available for the case where a host genuinely cannot hold a device key. The choice is
+yours; the tool's job is to keep it visible. So `check` reports every unlimited identity — and does
+not fail because of one. A standing state that goes red every run trains people to stop reading the
 output, and then the warning that matters goes unread with it.
 
 No identity outlives the CA that issued it. That is checked against the CA's real expiry, not the
@@ -210,7 +253,7 @@ non-zero for any of them, most urgent first:
 | **never enrolled** | configured, but has never collected an identity |
 | **silent** | has not been in touch for a week — its timer has probably stopped |
 | **lockout soon** | its identity runs out before it can plausibly renew itself |
-| **locked out** | its identity has expired; it now needs a new token by hand ([ADR-7](backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) |
+| **locked out** | its identity has expired — recoverable on its own if it has a device key, otherwise it needs a new token by hand ([ADR-7](backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) |
 
 An agent you revoked on purpose is not reported as a problem, and neither is a configured
 `unlimited` identity — that one is printed as a note and leaves the exit code alone.

@@ -63,6 +63,7 @@ func openBroker(cfg *config.Config, certs *certstore.Store) (*brokerParts, error
 			Name:             a.Name,
 			Certificates:     a.Certificates,
 			Mode:             registry.DeliveryMode(a.Mode),
+			PublicKey:        a.PublicKey,
 			IdentityLifetime: a.IdentityLifetime,
 		})
 	}

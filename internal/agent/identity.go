@@ -46,6 +46,13 @@ func certPath(dir string) string { return filepath.Join(dir, "agent.crt") }
 func keyPath(dir string) string  { return filepath.Join(dir, "agent.key") }
 func caPath(dir string) string   { return filepath.Join(dir, "broker-ca.crt") }
 
+// CAPath is where the broker's CA certificate is kept once the host has it.
+//
+// Exported because it outlives the identity: a host whose identity expired
+// still has this file, which is why asking for a new identity with the device
+// key needs nothing fetched by hand.
+func CAPath(dir string) string { return caPath(dir) }
+
 // LoadIdentity reads the stored identity.
 func LoadIdentity(dir string) (*Identity, error) {
 	certPEM, err := os.ReadFile(certPath(dir))

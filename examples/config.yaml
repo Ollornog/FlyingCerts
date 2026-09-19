@@ -78,24 +78,42 @@ broker:
   identity_lifetime: 30d
 
 agents:
-  # The ordinary case: inherits identity_lifetime from the broker.
+  # The ordinary case. public_key is the fingerprint the host printed when it
+  # ran `flying-certs-agent keygen` — the private half never leaves it.
+  #
+  # With it the host can ask for an identity at any time, including after one
+  # has expired. That is what makes a machine that was switched off for a
+  # month able to come back on its own.
   - name: gateway
     certificates: [gateway]
     mode: issue
+    public_key: "SHA256:3zCYV58KfoUQglgefqPRMl1I+EvvbaaGpYAUuLjK8Y4"
 
   # Rebuilt from an image every night, so it enrols often and never needs a
   # long-lived identity.
   - name: nightly-builder
     certificates: [gateway]
     mode: issue
+    public_key: "SHA256:Ye0ERfUT/q8L3owk1OcK1VJnC8MTh1lXf7RC7cTa4hM"
     identity_lifetime: 1d
 
-  # An appliance that is rarely touched and cannot be re-enrolled by hand
-  # without someone driving to it. "unlimited" means the identity is no longer
-  # the thing that expires — the trade is that only `revoke` can take it back,
-  # so the audit log and `check` become the way you notice anything. See
-  # ADR-17 for the full argument.
+  # An appliance nobody can reach by hand. With a device key it does NOT need
+  # an unlimited identity: it can ask for a fresh one whenever it wakes up, so
+  # a short lifetime costs nothing here and a stolen identity is worth a day.
+  #
+  # That is the recommended shape, and the reason `unlimited` is rarely the
+  # right answer — see ADR-17 for what it costs and ADR-18 for why the device
+  # key removes the reason people reach for it.
   - name: remote-appliance
     certificates: [internal-wildcard]
     mode: issue
-    identity_lifetime: unlimited
+    public_key: "SHA256:e5wNTWBfGcDDaLLSsXptQx0WhRiJjAgDjCkTLvHGFPo"
+    identity_lifetime: 1d
+
+  # A host authorised by bootstrap token instead: no public_key, so it has to
+  # be given a token to get in, and would need a new one if its identity ever
+  # expired. Useful when nobody wants to fetch a fingerprint off the machine
+  # first — but it is the weaker arrangement of the two.
+  - name: token-only
+    certificates: [gateway]
+    mode: issue

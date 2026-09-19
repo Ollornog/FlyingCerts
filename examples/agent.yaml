@@ -1,5 +1,20 @@
-# FlyingCerts agent configuration.
+# The agent's configuration.
 #
+# Before the first run:
+#
+#   flying-certs-agent -config agent.yaml keygen
+#
+# That creates this host's device key and prints its fingerprint. Put the
+# fingerprint in the broker's configuration under the matching agent's
+# public_key, then:
+#
+#   flying-certs-agent -config agent.yaml enrol -broker-ca broker-ca.crt
+#   flying-certs-agent -config agent.yaml run        # from a timer
+#
+# The private key stays in identity_dir and is never sent anywhere. Because it
+# does not expire, this host can ask for a new identity at any time — there is
+# no state it can end up in that needs someone to log in and fix it.
+
 # Runs from a timer. Nothing happens when nothing changed — no write, no
 # reload — so running it every few minutes costs nothing.
 

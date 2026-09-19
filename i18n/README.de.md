@@ -101,20 +101,59 @@ DNS-Zugangsdaten stimmen.
 
 ## Wie ein Host dazukommt
 
-Kein langlebiges geteiltes Geheimnis, und kein Login auf dem Vermittler.
+Kein gemeinsames Geheimnis, keine Anmeldung am Vermittler. Der Host behält einen Schlüssel, Sie
+bekommen dessen Fingerabdruck — dieselbe Anordnung wie `authorized_keys`.
 
-1. Du stellst auf dem Vermittler ein **Bootstrap-Token** für einen benannten Host aus. Einmalig
-   gültig, kurzlebig, gebunden an diesen Namen und an die eigene CA des Vermittlers. **Nicht** an den
-   CSR: der Agent erzeugt seinen Schlüssel erst beim Einlösen, es gibt zu diesem Zeitpunkt also nichts
-   zu binden. ADR-6 hält diese Korrektur fest, statt sie zu verstecken — ein Versprechen, das ein
-   Ablauf nicht halten kann, ist schlimmer als eines, das nie gegeben wurde.
-2. Der Agent löst es **einmal** ein und erhält sein eigenes Client-Zertifikat.
-3. Ab dann weist er sich per **mTLS** aus — etwas anderes wird nicht angenommen.
-4. Er erneuert dieses Zertifikat rechtzeitig, damit er sich nicht aussperrt.
+```bash
+# auf dem Host
+flying-certs-agent keygen
+#   SHA256:3zCYV58KfoUQglgefqPRMl1I+EvvbaaGpYAUuLjK8Y4
+```
 
-Läuft es *doch* ab, gibt es keinen automatischen Rückweg: ein abgelaufenes Zertifikat kann sich nicht
-mehr ausweisen, um seinen eigenen Ersatz zu erbitten. Das ist Absicht — und der Vermittler warnt
-lange vorher.
+```yaml
+# beim Vermittler
+agents:
+  - name: gateway
+    certificates: [gateway]
+    mode: issue
+    public_key: "SHA256:3zCYV58KfoUQglgefqPRMl1I+EvvbaaGpYAUuLjK8Y4"
+```
+
+```bash
+# zurück auf dem Host, einmalig
+flying-certs-agent enrol -broker-ca broker-ca.crt
+```
+
+1. Der Agent erzeugt beim ersten Lauf einen **Geräteschlüssel**. Die private Hälfte verlässt den Host
+   nie — unterwegs ist eine Signatur im TLS-Handshake, niemals das Geheimnis selbst.
+2. Sie autorisieren den Host, indem der Fingerabdruck in die Konfiguration des Vermittlers kommt. Ein
+   Fingerabdruck ist öffentlich; ihn in ein Ticket oder einen Chat zu kopieren kostet nichts.
+3. Der Agent fordert damit eine **Identität** an und weist sich fortan per **mTLS** aus.
+4. Er erneuert die Identität lange vor Ablauf — und falls das je scheitert, fragt er mit dem
+   Geräteschlüssel erneut. **Es gibt keinen Zustand, aus dem ein Host nur per Anmeldung zurückkommt.**
+
+Der letzte Punkt ist der, auf den es ankommt: Eine Maschine, die über den Urlaub ausgeschaltet war,
+kommt zurück, nachdem ihre Identität abgelaufen ist — mit Geräteschlüssel holt sie sich beim
+nächsten Lauf einfach eine neue.
+
+### Bootstrap-Marken, der andere Weg hinein
+
+Wer lieber keinen Fingerabdruck vom Host holen möchte, gibt stattdessen eine Einmal-Marke aus:
+
+```bash
+flying-certs-server token -agent gateway     # 5 Minuten, einmalig
+flying-certs-agent enrol -token <marke> -broker-ca broker-ca.crt
+```
+
+Das ist die schwächere Anordnung, und es lohnt zu wissen, warum: Eine Marke ist ein Geheimnis, das
+reisen muss, und sie hilft einem Host nicht, dessen Identität bereits abgelaufen ist — dann ist die
+Marke längst auch weg. Sie ist an den Namen des Agenten und an die CA des Vermittlers gebunden,
+**nicht** an den CSR: der Agent erzeugt seinen Schlüssel erst beim Einlösen, zum Ausgabezeitpunkt
+gibt es also nichts zu binden. ADR-6 hält diese Korrektur fest, statt sie zu verstecken — ein
+Versprechen, das ein Ablauf nicht halten kann, ist schlimmer als eines, das nie gegeben wurde.
+
+Beides zusammen ist erlaubt — eine Marke für den Anfang und ein Geräteschlüssel, damit der Host
+selbstständig bleibt. `keygen` lässt sich jederzeit nachholen.
 
 ## Zwei Ausliefermodi
 
@@ -183,14 +222,18 @@ wieder her, und das sollte deutlich dastehen:
   jede Erneuerung ist eine regelmässige Gelegenheit, dass etwas auffällt. Unbegrenzt fällt diese
   Gelegenheit weg.
 
-Es gibt die Einstellung trotzdem, weil der Gegenfall real ist: eine abgelaufene Identität auf einer
-Maschine, die niemand erreicht, sperrt sie endgültig aus
-([ADR-7](../backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) — und ein Ausfall, der einen Menschen
-mit einem Auto braucht, ist teurer als ein Zertifikat, das länger gilt. Die Entscheidung gehört
-Ihnen; die Aufgabe des Werkzeugs ist, sie sichtbar zu halten. `check` meldet deshalb jede
-unbegrenzte Identität — und schlägt deswegen **nicht** fehl. Ein Dauerzustand, der bei jedem Lauf
-rot ist, bringt Leute dazu, die Ausgabe nicht mehr zu lesen, und dann geht die echte Warnung mit
-unter.
+**Mit einem Geräteschlüssel wollen Sie das mit ziemlicher Sicherheit nicht.** `unlimited` gibt es,
+weil eine abgelaufene Identität auf einer unerreichbaren Maschine sie früher endgültig aussperrte
+([ADR-7](../backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) — das war der Grund, danach zu greifen.
+Der Geräteschlüssel nimmt diesen Grund weg: Der Host holt sich eine frische Identität, wann immer er
+aufwacht. Eine kurze Laufzeit kostet damit nichts, und eine gestohlene Identität ist einen Tag wert
+statt ein Jahrzehnt.
+
+Die Einstellung bleibt für den Fall, dass ein Host wirklich keinen Geräteschlüssel halten kann. Die
+Entscheidung gehört Ihnen; die Aufgabe des Werkzeugs ist, sie sichtbar zu halten. `check` meldet
+deshalb jede unbegrenzte Identität — und schlägt deswegen **nicht** fehl. Ein Dauerzustand, der bei
+jedem Lauf rot ist, bringt Leute dazu, die Ausgabe nicht mehr zu lesen, und dann geht die echte
+Warnung mit unter.
 
 Keine Identität überlebt die CA, die sie ausgestellt hat. Geprüft wird gegen das **tatsächliche**
 Ende der CA, nicht gegen die Laufzeit, mit der sie erzeugt wurde: eine CA, die acht Jahre eines
@@ -222,7 +265,7 @@ zuerst, und endet bei jeder davon ungleich null:
 | **never enrolled** | konfiguriert, hat aber nie eine Identität abgeholt |
 | **silent** | seit einer Woche nicht mehr gemeldet — vermutlich steht sein Timer |
 | **lockout soon** | seine Identität läuft aus, bevor er sich plausibel selbst erneuern kann |
-| **locked out** | Identität abgelaufen; er braucht jetzt von Hand eine neue Marke ([ADR-7](../backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) |
+| **locked out** | Identität abgelaufen — mit Geräteschlüssel kommt er allein zurück, sonst braucht er von Hand eine neue Marke ([ADR-7](../backlog/ADR-7-kein-weg-zurueck-nach-ablauf.md)) |
 
 Ein absichtlich widerrufener Agent taucht nicht als Problem auf, und eine bewusst auf `unlimited`
 gestellte Identität ebenso wenig — die wird als Hinweis gedruckt und lässt den Rückgabewert in Ruhe.

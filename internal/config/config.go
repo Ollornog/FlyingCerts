@@ -20,6 +20,7 @@ import (
 
 	"github.com/Ollornog/FlyingCerts/internal/acme"
 	"github.com/Ollornog/FlyingCerts/internal/certstore"
+	"github.com/Ollornog/FlyingCerts/internal/keyfp"
 	"github.com/Ollornog/FlyingCerts/internal/lifetime"
 	"go.yaml.in/yaml/v3"
 )
@@ -221,6 +222,7 @@ func (c *Config) validateAgents() error {
 		known[cert.Name] = true
 	}
 	seen := make(map[string]bool, len(c.Agents))
+	byKey := make(map[string]string, len(c.Agents))
 	for i, a := range c.Agents {
 		where := fmt.Sprintf("agents[%d]", i)
 		if a.Name == "" {
@@ -235,6 +237,22 @@ func (c *Config) validateAgents() error {
 		}
 		if len(a.Certificates) == 0 {
 			return fmt.Errorf("%s (%s): permitted no certificates", where, a.Name)
+		}
+		// A fingerprint is checked here rather than at the first connection.
+		// A typo in it means a host that cannot get in, and the moment to
+		// find that out is while editing the file — not during an outage,
+		// when this is the way back.
+		if a.PublicKey != "" {
+			if err := keyfp.Validate(a.PublicKey); err != nil {
+				return fmt.Errorf("%s (%s): public_key: %w", where, a.Name, err)
+			}
+			if other, taken := byKey[keyfp.Canonical(a.PublicKey)]; taken {
+				// Two agents behind one key would make the identity handed
+				// out depend on which name the caller claimed — that is an
+				// authorisation decision made by the caller.
+				return fmt.Errorf("%s (%s): public_key is the same as %q's", where, a.Name, other)
+			}
+			byKey[keyfp.Canonical(a.PublicKey)] = a.Name
 		}
 		for _, certName := range a.Certificates {
 			if !known[certName] {
@@ -292,6 +310,15 @@ type AgentSpec struct {
 	Certificates []string `yaml:"certificates"`
 	// Mode is "issue" (recommended) or "share".
 	Mode string `yaml:"mode"`
+	// PublicKey is the fingerprint of this host's device key, in the form
+	// printed by `flying-certs-agent fingerprint`.
+	//
+	// This is the ordinary way to authorise a host. With it the agent can ask
+	// for an identity at any time, including after one has expired — which is
+	// the only way back from a host that was switched off for longer than its
+	// identity lasts. Without it the host depends on a bootstrap token, and a
+	// token cannot help once the identity is gone.
+	PublicKey string `yaml:"public_key"`
 	// IdentityLifetime overrides broker.identity_lifetime for this agent.
 	//
 	// Per agent rather than only broker-wide, because hosts differ: something

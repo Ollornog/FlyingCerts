@@ -34,9 +34,9 @@ geraten zu werden.
 ## `unlimited` — was es kostet, ausgeschrieben
 
 Der Projektzweck war unter anderem, **langlebige gemeinsame Geheimnisse loszuwerden**
-([ADR-2](ADR-2-mtls-statt-api-keys.md)): kein API-Schluessel, der ein Jahr in einer Datei liegt,
-sondern eine Identitaet, die sich von selbst zurueckzieht. `unlimited` gibt genau diese
-Eigenschaft wieder her. Das ist keine Kleinigkeit, und es wird hier nicht weggeschrieben:
+([ADR-2](ADR-2-mtls-statt-api-keys.md)). `unlimited` gibt **eine** der Eigenschaften auf, die das
+ausmachen — die Selbstbegrenzung — und behaelt die anderen drei. Das ist keine Kleinigkeit und wird
+hier nicht weggeschrieben:
 
 - **Nur ein Widerruf nimmt die Identitaet zurueck.** Ohne Ablauf gibt es keinen Zeitpunkt, an
   dem ein vergessener Host von selbst aufhoert, Zutritt zu haben. Ein Rechner, der ausgemustert
@@ -48,11 +48,32 @@ Eigenschaft wieder her. Das ist keine Kleinigkeit, und es wird hier nicht wegges
   — bei uns bis zu zehn Jahre. Genau so wird es auch angezeigt (`until CA (2036-09-16)`), statt
   eine Unendlichkeit zu behaupten, die das Format nicht kennt.
 
-**Trotzdem gebaut**, weil der Gegenfall real ist: ein Geraet, zu dem jemand hinfahren muss, sperrt
+**Es ist trotzdem kein API-Schluessel**, und diese Praezisierung gehoert hierher, weil eine
+fruehere Fassung dieses Abschnitts den Eindruck erweckte, `unlimited` sei einer. Drei Unterschiede
+bleiben, unabhaengig von der Laufzeit:
+
+| | API-Schluessel | mTLS, auch `unlimited` |
+|---|---|---|
+| Wo entsteht das Geheimnis | auf dem Server, muss uebertragen werden — existiert also mindestens zweimal | **auf dem Host, verlaesst ihn nie**; nur der CSR reist |
+| Was geht bei jeder Anfrage ueber die Leitung | das Geheimnis selbst | **nichts Wiederverwendbares** — der Client signiert im Handshake |
+| Was liegt beim Vermittler | ein Schluessel oder dessen Hash je Host | **nur die CA** — ein Leck dort gibt keine Client-Zugangsdaten her |
+
+Der Unterschied ist die **Angriffsflaeche**, nicht die Lebensdauer. Ein API-Schluessel durchlaeuft
+Deploy-Skripte, Ansible-Vaults, Zwischenablagen und Protokolle; jede Station ist eine Kopie. Ein
+privater Schluessel, der auf dem Host entsteht, hat keine davon.
+
+**Gebaut wurde es**, weil der Gegenfall real war: ein Geraet, zu dem jemand hinfahren muss, sperrte
 sich bei einer abgelaufenen Identitaet endgueltig aus
-([ADR-7](ADR-7-kein-weg-zurueck-nach-ablauf.md)) — und ein Ausfall, der einen Menschen mit einem
-Auto braucht, ist teurer als ein Zertifikat, das laenger gilt. Die Entscheidung gehoert dem
-Betreiber; die Aufgabe des Werkzeugs ist, sie **sichtbar** zu machen.
+([ADR-7](ADR-7-kein-weg-zurueck-nach-ablauf.md)).
+
+> **Nachtrag 20.09.2026:** Dieser Grund ist mit [ADR-18](ADR-18-geraeteschluessel.md) entfallen.
+> Ein Host mit Geraeteschluessel holt sich jederzeit eine neue Identitaet, auch nach Ablauf — die
+> Laufzeit darf also **kurz** sein, ohne Aussperr-Risiko. `unlimited` bleibt fuer den Fall, dass
+> ein Host wirklich keinen Geraeteschluessel halten kann, ist aber **nicht mehr die Antwort auf
+> „ich will keinen Ausfall"**. Die Empfehlung in Beispielen und README ist seitdem `1d` mit
+> Geraeteschluessel, nicht `unlimited`.
+
+Die Entscheidung gehoert dem Betreiber; die Aufgabe des Werkzeugs ist, sie **sichtbar** zu machen.
 
 Deshalb:
 

@@ -86,7 +86,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An unlimited identity is reported every run and never fails it — a standing
   state that always exits non-zero teaches people to stop reading the output.
 
+- **Device keys, the ordinary way a host joins.** The agent generates a key
+  pair on first run and never sends the private half anywhere; you authorise
+  the host by putting the fingerprint in the broker's `public_key`, the same
+  arrangement as `authorized_keys`. With it a host can ask for an identity at
+  any time — including after one has expired, which closes the one failure
+  that previously needed somebody to log in (ADR-7, ADR-18).
+- `keygen` and `fingerprint` on the agent; `enrol` without `-token` uses the
+  device key. `run` now heals itself: a missing or expired identity is
+  replaced silently on the next run.
+- The identity may not reuse the device key, and the broker refuses a request
+  that tries. Keeping them apart is what keeps the long-lived secret out of
+  daily traffic.
+- Bootstrap tokens remain, as the alternative for when nobody wants to fetch a
+  fingerprint off the host first.
+
+### Changed
+- The TLS layer no longer verifies client certificates; this package does,
+  per route. `VerifyClientCertIfGiven` cannot express a device key, which is
+  deliberately not signed by our CA. What moved into our code is checked by
+  `verify_test.go`: a self-signed certificate claiming an agent's name,
+  another CA's certificate, an expired one, a server certificate from our own
+  CA, and none at all — each refused.
+- `unlimited` is no longer the answer to "I do not want a host to lock itself
+  out"; a device key is, and it does not give up the self-limiting property.
+  ADR-17 carries the correction, including the part that was overstated: an
+  unlimited mTLS identity is still not an API key, because the secret never
+  travels and the broker stores none.
+
 ### Fixed
+- `public_key` never reached the registry: present in the configuration, the
+  registry and the handlers, with the one line that copies it left out. Every
+  unit test passed and the feature did nothing. Found by running it by hand,
+  and now guarded by a test that walks `AgentSpec` and fails on any field
+  that is not carried across.
+- `tls.Certificate.Leaf` was set to the template rather than to the parsed
+  certificate, so it carried no public key.
 - `token -agent NAME` printed the usage block instead of issuing a token. Go's
   `flag` stops at the first non-flag argument, so everything after the command
   name was left unparsed. Command flags are now read from their own flag set

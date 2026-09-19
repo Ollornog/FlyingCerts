@@ -13,6 +13,7 @@ Konventionen: [README-KONVENTION.md](README-KONVENTION.md).
 * ☑ **[M-4](M-4-agent.md)** Agent — anfordern, ablegen, neu laden — noch keine Aufgaben
 * ☑ **[M-5](M-5-audit-und-ablauf.md)** Aufzeichnung und Ablaufverfolgung — 1/1 erledigt
 * ☑ **[M-6](M-6-einstellbare-laufzeit.md)** Einstellbare Identitaets-Laufzeit — noch keine Aufgaben
+* ☑ **[M-7](M-7-geraeteschluessel.md)** Geraeteschluessel — Aufnahme ohne Marke, Rueckkehr ohne Eingriff — noch keine Aufgaben
 
 ## Aufgaben
 
@@ -40,3 +41,4 @@ Konventionen: [README-KONVENTION.md](README-KONVENTION.md).
 * ☑ **[ADR-15](ADR-15-eigene-ca-nur-fuer-agenten.md)** Der Vermittler ist doch eine CA — aber nur für Agenten-Ausweise
 * ☑ **[ADR-16](ADR-16-sicherung.md)** Eine Sicherung ist erst eine, wenn danach erneuert und ausgeliefert wird
 * ☑ **[ADR-17](ADR-17-einstellbare-laufzeit.md)** Identitaets-Laufzeit je Agent, inklusive unlimited — mit offener Rechnung
+* ☑ **[ADR-18](ADR-18-geraeteschluessel.md)** Der Geraeteschluessel ist der Standardweg — und der Weg zurueck

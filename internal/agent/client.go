@@ -61,8 +61,10 @@ func NewClient(baseURL string, id *Identity, timeout time.Duration) (*Client, er
 	}
 	if id.ExpiredAt(time.Now()) {
 		// Stop here rather than let the handshake fail with something
-		// unhelpful. This state has exactly one remedy, and the error names it.
-		return nil, fmt.Errorf("%w (expired %s) — enrol this host again",
+		// unhelpful. The error names the way out, which since ADR-18 is
+		// usually the device key rather than a new token.
+		return nil, fmt.Errorf("%w (expired %s) — ask for a new one with this host's device key, "+
+			"or enrol it again with a token",
 			ErrIdentityExpired, id.Certificate.NotAfter.UTC().Format(time.RFC3339))
 	}
 	tlsCfg, err := id.TLSConfig()
@@ -79,6 +81,53 @@ func NewClient(baseURL string, id *Identity, timeout time.Duration) (*Client, er
 			Transport: &http.Transport{TLSClientConfig: tlsCfg},
 		},
 	}, nil
+}
+
+// NewDeviceClient builds a client that authenticates with the host's device
+// key rather than with an identity.
+//
+// This is the one that works when nothing else does: the device key does not
+// expire, so a host that was switched off for longer than its identity lasted
+// can still come back on its own (ADR-18). The broker's CA certificate is
+// still needed to verify the far end — that requirement never goes away, and
+// there is deliberately no flag to skip it.
+func NewDeviceClient(baseURL string, brokerCAPEM []byte, clientCert tls.Certificate,
+	timeout time.Duration) (*Client, error) {
+
+	if baseURL == "" {
+		return nil, errors.New("no broker address")
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(brokerCAPEM) {
+		return nil, errors.New("the broker CA certificate could not be read")
+	}
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+	return &Client{
+		baseURL: strings.TrimSuffix(baseURL, "/"),
+		http: &http.Client{
+			Timeout: timeout,
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{
+				RootCAs:      pool,
+				Certificates: []tls.Certificate{clientCert},
+				MinVersion:   tls.VersionTLS12,
+			}},
+		},
+	}, nil
+}
+
+// RequestIdentity asks for an identity using the device key.
+//
+// The request carries no name: the broker works out which agent this is from
+// the key it just proved possession of. A name in the body would be a name
+// chosen by the caller, which is the mistake this whole design avoids.
+func (c *Client) RequestIdentity(ctx context.Context, csrPEM string) (*EnrolResult, error) {
+	var out EnrolResult
+	if err := c.post(ctx, "/v1/identity/request", map[string]string{"csr": csrPEM}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // EnrolResult is what the broker returns for a redeemed token.

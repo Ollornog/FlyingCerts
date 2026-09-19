@@ -1,6 +1,8 @@
 package brokerapi
 
 import (
+	"bytes"
+	"crypto"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -407,4 +409,128 @@ func decodePEM(data []byte) ([]byte, []byte) {
 		return nil, rest
 	}
 	return block.Bytes, rest
+}
+
+// identityRequest is what a host sends when it asks for an identity with its
+// device key. No name and no token: the name follows from the key, and a name
+// in the body would be a name chosen by the caller.
+type identityRequest struct {
+	CSR string `json:"csr"`
+}
+
+// handleIdentityRequest issues an identity to a host that holds an authorised
+// device key.
+//
+// This is the route that makes the system recoverable. Every other way in
+// needs something that expires — an identity, a token — and a host that was
+// switched off for longer than that has nothing left to present. A device key
+// does not expire, so there is always a way back (ADR-18), and the identity
+// itself can therefore be short.
+func (s *Server) handleIdentityRequest(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC()
+	ev := Event{At: now, Action: "identity-request", RemoteAddr: r.RemoteAddr}
+
+	fingerprint, err := deviceFingerprint(r)
+	if err != nil {
+		ev.Reason = err.Error()
+		s.audit.Record(ev)
+		writeError(w, http.StatusUnauthorized, ErrNeedDeviceCert)
+		return
+	}
+
+	agent, err := s.agents.ByPublicKey(fingerprint)
+	if err != nil {
+		// The fingerprint goes in the audit log on purpose: it is public, and
+		// it is the only thing that lets somebody work out which host is
+		// knocking — or add it to the configuration if it should be let in.
+		ev.Reason = "unknown device key " + fingerprint
+		s.audit.Record(ev)
+		s.log.Warn("an unauthorised device key asked for an identity",
+			slog.String("fingerprint", fingerprint), slog.String("from", r.RemoteAddr))
+		writeError(w, http.StatusForbidden,
+			"this device key is not authorised; add its fingerprint to the agent's public_key")
+		return
+	}
+	ev.Agent = agent.Name
+
+	if s.agents.Revoked(agent.Name) {
+		ev.Reason = "revoked"
+		s.audit.Record(ev)
+		writeError(w, http.StatusForbidden, "this agent has been revoked")
+		return
+	}
+
+	var req identityRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxBody)).Decode(&req); err != nil {
+		ev.Reason = "malformed request"
+		s.audit.Record(ev)
+		writeError(w, http.StatusBadRequest, "malformed request")
+		return
+	}
+	csr, err := parseCSR([]byte(req.CSR))
+	if err != nil {
+		ev.Reason = "bad csr"
+		s.audit.Record(ev)
+		writeError(w, http.StatusBadRequest, "certificate request could not be read")
+		return
+	}
+
+	// The identity key must not be the device key. Keeping them apart is the
+	// whole reason the device key stays safe: it is used rarely and never
+	// leaves the disk, while the identity is in daily use and short-lived.
+	// One key for both would put the long-lived secret into daily traffic.
+	if same, err := sameKey(csr.PublicKey, r.TLS.PeerCertificates[0].PublicKey); err != nil {
+		ev.Reason = "cannot compare keys: " + err.Error()
+		s.audit.Record(ev)
+		writeError(w, http.StatusBadRequest, "certificate request could not be read")
+		return
+	} else if same {
+		ev.Reason = "identity key is the device key"
+		s.audit.Record(ev)
+		writeError(w, http.StatusBadRequest,
+			"the identity must use its own key, not the device key: generate a separate one")
+		return
+	}
+
+	certPEM, notAfter, err := agentca.SignAgent(s.ca, agent.Name, csr, s.lifetimeFor(agent.Name))
+	if err != nil {
+		ev.Reason = "signing failed: " + err.Error()
+		s.audit.Record(ev)
+		s.log.Error("could not sign an agent identity",
+			slog.String("agent", agent.Name), slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "could not issue an identity")
+		return
+	}
+
+	ev.Allowed = true
+	s.audit.Record(ev)
+	if err := s.agents.Enrolled(agent.Name, notAfter, now); err != nil {
+		s.log.Warn("could not record the identity request", slog.String("error", err.Error()))
+	}
+	s.log.Info("issued an identity against a device key",
+		slog.String("agent", agent.Name), slog.Time("expires", notAfter))
+
+	writeJSON(w, http.StatusOK, enrolResponse{
+		AgentName:      agent.Name,
+		CertificatePEM: string(certPEM),
+		CAPem:          string(s.ca.CertificatePEM()),
+		NotAfter:       notAfter.Format(time.RFC3339),
+	})
+}
+
+// sameKey reports whether two public keys are the same key.
+//
+// Compared by their encoded form rather than with ==, which on a key type is
+// a pointer comparison and would answer "different" for two copies of the
+// same key — turning the check above into one that never fires.
+func sameKey(a, b crypto.PublicKey) (bool, error) {
+	da, err := x509.MarshalPKIXPublicKey(a)
+	if err != nil {
+		return false, err
+	}
+	db, err := x509.MarshalPKIXPublicKey(b)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(da, db), nil
 }

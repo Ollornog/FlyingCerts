@@ -164,8 +164,14 @@ func TestExpiredIdentityIsRefusedWithAClearError(t *testing.T) {
 	if !errors.Is(err, ErrIdentityExpired) {
 		t.Fatalf("err = %v, want ErrIdentityExpired", err)
 	}
-	if !strings.Contains(err.Error(), "enrol this host again") {
-		t.Errorf("the error does not say what to do: %v", err)
+	// Both ways out have to be named. Since ADR-18 the device key is the
+	// ordinary one, and a message that mentioned only the token would send
+	// somebody to the host with a new token when the host could have fixed
+	// itself.
+	for _, want := range []string{"device key", "token"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not mention %q as a way out: %v", want, err)
+		}
 	}
 }
 
