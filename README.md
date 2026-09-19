@@ -178,18 +178,18 @@ is broken, not the code — so the repeatability promise is demonstrated rather 
 
 **Early, and honest about it.** The interfaces are not stable and there is no usable release yet.
 
-The broker works as a set of commands: `register`, `obtain`, `renew`, `list`. Everything under it
-is tested — atomic writes with enforced permissions, certificate inspection, an ACME account that is
-never silently replaced, ARI-driven renewal with a lifetime-fraction fallback, serialised DNS-01
-challenge records, and a logging redactor.
+Both sides exist and talk to each other. The broker obtains and keeps certificates
+(`register`, `obtain`, `renew`, `list`); agents enrol with a one-time token and then collect theirs
+over mTLS. Both delivery modes work, name authorisation is enforced, every decision is audited, and
+deployments verify themselves.
 
 **Proven end to end against a real CA.** The full path — create an account, obtain over DNS-01,
 renew naming the predecessor, ask the CA when it wants to be asked — runs against Pebble, Let's
 Encrypt's test CA, on every CI run. There it fails rather than skips when the test CA is missing,
 because a test that quietly skips is decoration.
 
-What does not exist yet: the mTLS API and the agent, so hosts cannot ask for their certificates yet.
-Those are milestones **M-2** to **M-5** in [`backlog/`](backlog/).
+What is still open: **M-5** in [`backlog/`](backlog/) — the expiry tracking and the warning
+before an agent locks itself out. The parts it builds on are there; the reporting is not.
 
 The design decisions were made **before** the code, by studying what comparable projects got wrong —
 each one is recorded as an ADR in [`backlog/`](backlog/) naming the mistake it avoids. If you

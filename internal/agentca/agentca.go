@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -250,4 +251,68 @@ func randomSerial() (*big.Int, error) {
 		return nil, fmt.Errorf("generate serial: %w", err)
 	}
 	return serial, nil
+}
+
+// SignServer issues the broker's own TLS certificate.
+//
+// The broker needs one that agents can verify, and the only thing an agent is
+// given at enrolment is this CA. So the endpoint's certificate comes from
+// here — not from the public ACME side, which agents have no reason to trust
+// for this purpose and which would tie the endpoint to a public name.
+//
+// Separate from SignAgent because the two are opposites: an agent identity may
+// only authenticate, a server certificate may only serve. Issuing one function
+// that does both would eventually hand someone a certificate that does both.
+func SignServer(ca *CA, names []string, lifetime time.Duration) (certPEM, keyPEM []byte, err error) {
+	if len(names) == 0 {
+		return nil, nil, errors.New("no names for the server certificate")
+	}
+	if lifetime <= 0 {
+		lifetime = DefaultAgentLifetime
+	}
+	if lifetime > rootLifetime {
+		return nil, nil, errors.New("requested lifetime outlives the CA")
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate server key: %w", err)
+	}
+	serial, err := randomSerial()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var dnsNames []string
+	var ips []net.IP
+	for _, n := range names {
+		if ip := net.ParseIP(n); ip != nil {
+			ips = append(ips, ip)
+			continue
+		}
+		dnsNames = append(dnsNames, n)
+	}
+
+	now := time.Now().UTC()
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: names[0]},
+		DNSNames:              dnsNames,
+		IPAddresses:           ips,
+		NotBefore:             now.Add(-time.Minute),
+		NotAfter:              now.Add(lifetime),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sign server certificate: %w", err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal server key: %w", err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), nil
 }

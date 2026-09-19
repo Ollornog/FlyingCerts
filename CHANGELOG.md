@@ -49,3 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for it, so the private key never leaves the host. Every name in the request
   is checked against exactly what that agent is permitted — refused, never
   trimmed, and refused before the CA is contacted.
+- `flying-certs-agent`: enrols once with a bootstrap token, then collects its
+  certificates over mTLS and deploys them.
+- Deployment that verifies itself: after the reload, the agent opens a TLS
+  connection to the service and compares fingerprints. A reload that exits 0
+  without rereading its files is caught instead of reported as success.

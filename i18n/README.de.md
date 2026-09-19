@@ -186,18 +186,18 @@ wird, ist kaputt — nicht der Code. So ist die Wiederholbarkeit vorgeführt sta
 **Früh, und ehrlich darüber.** Die Schnittstellen sind nicht stabil, ein brauchbares Release gibt es
 noch nicht.
 
-Der Vermittler läuft als Satz von Befehlen: `register`, `obtain`, `renew`, `list`. Alles darunter
-ist getestet — atomares Schreiben mit durchgesetzten Rechten, Zertifikatsuntersuchung, ein
-ACME-Konto, das nie stillschweigend ersetzt wird, ARI-gesteuerte Erneuerung mit Rückfall auf einen
-Anteil der Laufzeit, serialisierte DNS-01-Challenge-Einträge und der Protokoll-Filter.
+Beide Seiten gibt es, und sie sprechen miteinander. Der Vermittler holt und hält Zertifikate
+(`register`, `obtain`, `renew`, `list`); Agenten nehmen mit einem Einmal-Token teil und holen ihre
+danach per mTLS. Beide Ausliefermodi laufen, die Namens-Autorisierung greift, jede Entscheidung
+wird aufgezeichnet, und Auslieferungen prüfen sich selbst.
 
 **Durchgängig gegen eine echte CA bewiesen.** Der volle Weg — Konto anlegen, per DNS-01 holen, mit
 Nennung des Vorgängers erneuern, die CA nach ihrem Wunschzeitpunkt fragen — läuft bei jedem CI-Lauf
 gegen Pebble, die Test-CA von Let's Encrypt. Dort scheitert er, statt sich zu überspringen, wenn die
 Test-CA fehlt: ein Test, der still übersprungen wird, ist Dekoration.
 
-Was noch fehlt: die mTLS-Schnittstelle und der Agent, Hosts können ihre Zertifikate also noch nicht
-anfordern. Das sind die Meilensteine **M-2** bis **M-5** in [`backlog/`](../backlog/).
+Offen ist noch **M-5** in [`backlog/`](../backlog/): die Ablaufverfolgung und die Warnung, bevor
+ein Agent sich aussperrt. Die Bausteine dafür stehen, die Auswertung fehlt.
 
 Die Architekturentscheidungen fielen **vor** dem Code, aus der Untersuchung dessen, was vergleichbare
 Projekte falsch gemacht haben — jede ist als ADR in [`backlog/`](../backlog/) festgehalten und nennt

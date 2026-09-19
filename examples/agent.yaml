@@ -1,0 +1,48 @@
+# flying-certs agent configuration.
+#
+# Runs from a timer. Nothing happens when nothing changed — no write, no
+# reload — so running it every few minutes costs nothing.
+
+broker: https://broker.example.com:8443
+identity_dir: /var/lib/flying-certs-agent
+
+certificates:
+  # issue mode (recommended): the key is generated on this host and never
+  # leaves it. Only a certificate request travels.
+  - name: gateway-cert
+    mode: issue
+
+    # These must match the broker's configuration EXACTLY. It refuses a
+    # subset as firmly as an extra name — see internal/csrcheck for why
+    # "asking for less" is not the harmless case it looks like.
+    domains:
+      - gateway.example.com
+
+    cert_path: /etc/ssl/gateway/fullchain.pem
+    key_path: /etc/ssl/gateway/privkey.pem
+
+    # The service runs as its own user and reads the key through a group.
+    group: nginx
+    key_mode: 0640
+
+    # argv, not a shell line: an argument with a space stays one argument,
+    # and nothing in it is interpreted.
+    reload: [systemctl, reload, nginx]
+    reload_timeout: 30s
+
+    # The one setting that turns "the reload exited 0" into "the service is
+    # really serving it". Without it the agent warns on every deployment that
+    # it could not confirm anything — which is the honest answer, and exactly
+    # the blind spot behind certificate outages that go unnoticed for weeks.
+    verify_address: 127.0.0.1:443
+    verify_server_name: gateway.example.com
+
+  # share mode: the broker hands over one certificate together with its
+  # private key. Simpler, and sometimes the only option — but the key travels
+  # and every host holding it shares one fate.
+  - name: shared-wildcard
+    mode: share
+    cert_path: /etc/ssl/shared/fullchain.pem
+    key_path: /etc/ssl/shared/privkey.pem
+    reload: [systemctl, reload, haproxy]
+    verify_address: 127.0.0.1:8443
