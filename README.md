@@ -10,15 +10,23 @@
 <img src="https://img.shields.io/badge/go-1.27%2B-00ADD8.svg" alt="Go">
 </p>
 
-### Publicly trusted certificates for hosts that the internet cannot reach.
+### Publicly trusted certificates for hosts the internet cannot reach.
 
-One host of yours is exposed and can talk to a CA. The rest are not — they sit on an internal
-network, behind NAT, or on a mesh VPN. They still need certificates a browser trusts, because
-your domain is in the HSTS preload list, or because your users carry phones you do not manage.
+**One exposed host does the ACME work, the others come and ask.** Your internal machines sit behind
+NAT, on a mesh VPN, or on a network no CA will ever reach — and they still need certificates a
+browser trusts, because your domain is HSTS-preloaded or your users carry phones you do not manage.
 
-**flying-certs** puts a broker on the exposed host. It obtains certificates over ACME using a
-DNS-01 challenge, and internal hosts **come and ask for theirs**. The broker knows who asked,
-for what, and when — so it can also tell you which host is about to run out.
+- **Don't want a DNS API token on twelve machines?** → you won't need one. Only the broker holds it.
+- **Don't want the same private key on twelve machines either?** → then don't. In `issue` mode the key never leaves the host.
+- **Want to know which host is about to run out?** → the broker knows, because it issued each one.
+- **Already running your own ACME on every host?** → then you don't need this. Keep doing that.
+
+> **A quick word on positioning:** flying-certs is **not a CA** and **not an ACME server**. It talks
+> to a real ACME CA on behalf of hosts that cannot, and hands the result to the host that asked.
+> So it is **no replacement** for step-ca or Vault PKI — those give you your *own* trust root.
+> This one gets you certificates the *public* already trusts.
+
+**How it fits together:**
 
 ```
         ACME / DNS-01
@@ -29,71 +37,108 @@ for what, and when — so it can also tell you which host is about to run out.
                         · tracks expiry per host    · verifies the reload took effect
 ```
 
-## Why not just copy the files around
+**What you get:**
 
-That is what most people do, and it works until it doesn't:
+- 🔐 **mTLS, no shared secret** — one single-use token to enrol, a certificate of its own from then on
+- 📜 **Two delivery modes** — a certificate per host (recommended) or one shared certificate
+- 🛡️ **Name authorisation** — a host gets certificates for *its* names, and no others
+- 📋 **An audit trail worth something** — the identity comes from the client certificate, not from a header
+- ⏰ **Expiry per host** — and a warning before a host locks itself out
+- 🔁 **ARI-driven renewal** — the CA says when, with a sane fallback when it doesn't
+- ✅ **Reload verification** — the agent checks what the service *actually serves*, not the exit code
 
-- **The private key travels.** One shared wildcard on a dozen hosts means one compromised host
-  exposes every service under that name — and revoking it takes all of them down at once.
-- **Nobody authorises the ask.** A file-copy job that is allowed to read a directory is allowed to
-  read *all* of it. The filter usually lives on the client, which is the wrong side.
-- **Nobody notices when it stops.** A copy job that silently does nothing looks exactly like a copy
-  job with nothing to do — until a certificate expires in production.
+---
 
-flying-certs is the answer to those three, in that order.
+## Installation
+
+Binaries for Linux are attached to each [release](https://github.com/Ollornog/flying-certs/releases):
+
+```bash
+curl -fsSLO https://github.com/Ollornog/flying-certs/releases/latest/download/SHA256SUMS
+sha256sum -c SHA256SUMS         # verify before you run it
+```
+
+Or build from source (Go 1.27+):
+
+```bash
+go build ./cmd/flying-certs-server
+go build ./cmd/flying-certs-agent
+```
+
+## Quickstart
+
+Not yet — the interfaces are still moving. See [Status](#status).
 
 ## How a host joins
 
 No long-lived shared secret, and no login on the broker.
 
-1. You issue a **bootstrap token** on the broker for a named host. It is single-use and short-lived.
+1. You issue a **bootstrap token** on the broker for a named host. Single-use, short-lived, bound to
+   that name *and* to the request it will be redeemed with.
 2. The agent redeems it **once** and receives its own client certificate.
-3. From then on it authenticates with **mTLS** — nothing else is accepted. The broker knows every
-   caller cryptographically, which is what makes the audit trail worth anything.
-4. The agent renews its client certificate well before it expires, so it cannot lock itself out.
+3. From then on it authenticates by **mTLS** — nothing else is accepted.
+4. It renews that certificate well before expiry, so it cannot lock itself out.
+
+If it *does* expire, there is no automatic way back: an expired certificate cannot authenticate to
+ask for its own replacement. That is deliberate, and the broker warns you long before it happens.
 
 ## Two delivery modes
 
-Pick per host or per group. They are not equally good, and the docs say so.
+Pick per host or per group. They are not equally good, and this says so.
 
 **`issue` — a certificate of its own** *(recommended)*
-The agent generates its key locally and sends only a CSR. **No private key ever travels.** The
-broker obtains a certificate for that host from the CA and hands it back. Because the broker issues
-per host, "when does this host expire" is a real question with a real answer.
+The agent generates its key locally and sends only a CSR. **No private key ever travels.** The broker
+checks every name in that CSR against what this host is allowed to have, then obtains the
+certificate. Because it issues per host, "when does this host expire" has a real answer.
 
 **`share` — a shared certificate**
-The broker hands out one certificate *and its private key* to every host authorised for it. Simpler,
-and sometimes the only option — but the key travels, and every host holding it shares one fate.
-Expiry is then a property of the certificate, not of the host.
+The broker hands one certificate *and its private key* to every host authorised for it. Simpler, and
+sometimes the only option — but the key travels, and every host holding it shares one fate. Expiry is
+then a property of the certificate, not of the host.
+
+## Tests & CI
+
+```bash
+scripts/check.sh            # the full gate: gofmt, vet, go test -race, hygiene, residue
+scripts/check.sh --fast     # without the race detector (only when in a hurry)
+```
+
+The gate runs two things side by side, because the code is Go and the repository hygiene comes from a
+shared Python base:
+
+- **`go test -race ./...`** — the race detector belongs in the normal run, not a special one: the
+  broker serves many agents at once and shares certificate state between them.
+- **`tests/test_repo.py`** — guards the housekeeping: version in `internal/version` matches the
+  changelog, no private infrastructure, no secrets, no key files, Actions pinned by commit SHA,
+  `permissions:` on every workflow, German and English documents keeping the same shape.
+
+**Before every push** — one gate, locally:
+
+```bash
+git config core.hooksPath .githooks   # once per clone: the pre-push hook runs the gate
+scripts/check.sh
+```
+
+**GitHub Actions** runs the same gate **twice** on every push. A test that goes red on the second run
+is broken, not the code — so the repeatability promise is demonstrated rather than claimed.
 
 ## Status
 
-Early. The interfaces are not stable yet. See [`backlog/`](backlog/) for what is planned and which
-decisions have already been made, and [`CHANGELOG.md`](CHANGELOG.md) for what has shipped.
+**Early, and honest about it.** The interfaces are not stable and there is no usable release yet.
 
-## What this is not
+What exists: the repository, the test gate, and the groundwork — atomic file writing with correct
+permissions, and certificate inspection (pair validation, remaining lifetime, renewal timing). Both
+fully tested.
 
-- **Not a CA.** It does not sign anything itself. It talks to a real ACME CA and passes the result on.
-- **Not an ACME server.** Agents speak the flying-certs protocol, not ACME. Handing out someone
-  else's certificate over ACME is not possible — ACME signs the CSR the client generated, and a leaf
-  certificate cannot sign anything.
-- **Not a replacement for letting each host do ACME itself.** If your hosts *can* reach a CA and hold
-  their own DNS credentials safely, do that instead. This exists for when they cannot.
+What does not exist yet: the ACME side, the mTLS API, the agent. Those are milestones **M-1** to
+**M-5** in [`backlog/`](backlog/).
 
-## Install
+The design decisions were made **before** the code, by studying what comparable projects got wrong —
+each one is recorded as an ADR in [`backlog/`](backlog/) naming the mistake it avoids. If you
+disagree with one, the reasoning is written down and can be argued with.
 
-Binaries for Linux are attached to each [release](https://github.com/Ollornog/flying-certs/releases).
-Verify what you downloaded:
+MIT license.
 
-```bash
-sha256sum -c SHA256SUMS
-```
+## Credits
 
-## Documentation
-
-- [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Backlog and decisions](backlog/)
-
-## License
-
-[MIT](LICENSE) — © 2026 ollornog
+Icon: *(attribution pending — see issue)*
