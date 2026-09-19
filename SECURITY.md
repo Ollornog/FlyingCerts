@@ -34,4 +34,4 @@ especially welcome:
 - An agent being able to read or write anything on the broker beyond its own certificates.
 - The audit trail being incomplete or forgeable.
 <br /><br />
-<p align="right"><img src="docs/flying-certs.png" alt="FlyingCerts" width="60" height="60"></p>
+<p align="right"><img src="docs/FlyingCerts.png" alt="FlyingCerts" width="60" height="60"></p>

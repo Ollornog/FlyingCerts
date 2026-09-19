@@ -36,4 +36,4 @@ would have caught the problem it fixes. If you found a vulnerability, please fol
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 <br /><br />
-<p align="right"><img src="docs/flying-certs.png" alt="FlyingCerts" width="60" height="60"></p>
+<p align="right"><img src="docs/FlyingCerts.png" alt="FlyingCerts" width="60" height="60"></p>

@@ -35,4 +35,4 @@ Punkten sind besonders willkommen:
 - Ein Agent kann auf dem Vermittler mehr lesen oder schreiben als seine eigenen Zertifikate.
 - Die Aufzeichnung ist unvollständig oder fälschbar.
 <br /><br />
-<p align="right"><img src="../docs/flying-certs.png" alt="FlyingCerts" width="60" height="60"></p>
+<p align="right"><img src="../docs/FlyingCerts.png" alt="FlyingCerts" width="60" height="60"></p>

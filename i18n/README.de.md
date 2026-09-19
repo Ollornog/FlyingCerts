@@ -1,4 +1,4 @@
-<p align="center"><img src="../docs/flying-certs.png" alt="FlyingCerts" width="250" height="250"></p>
+<p align="center"><img src="../docs/FlyingCerts.png" alt="FlyingCerts" width="250" height="250"></p>
 
 <h1 align="center">FlyingCerts</h1>
 

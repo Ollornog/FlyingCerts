@@ -84,4 +84,4 @@ Antworten auf häufig gestellte Fragen zu diesem Verhaltenskodex finden Sie in d
 [mozilla]: https://github.com/mozilla/inclusion
 
 <br /><br />
-<p align="right"><img src="../docs/flying-certs.png" alt="FlyingCerts" width="60" height="60"></p>
+<p align="right"><img src="../docs/FlyingCerts.png" alt="FlyingCerts" width="60" height="60"></p>
