@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Vorgabe fuer alle Jobs: nur lesen. Wer schreiben muss, erhoeht im eigenen Job.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests und Hygiene
+    runs-on: ubuntu-latest   # oeffentliches Repo: Fork-PRs duerfen nie auf eigener Hardware laufen
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Volle Suite
+        run: scripts/check.sh
+
+      # Die Zusage aus CONTRIBUTING: ein Test, der beim zweiten Lauf rot wird, ist kaputt.
+      # Genau das wird hier nachgewiesen, statt es nur zu behaupten.
+      - name: Zweiter Lauf — Wiederholbarkeit
+        run: scripts/check.sh

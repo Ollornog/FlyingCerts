@@ -1,0 +1,65 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Bauen und veroeffentlichen
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # nur dieser Job legt das Release an
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      # Erst pruefen, dann bauen: ein Tag, der nicht zur Version im Quelltext passt,
+      # erzeugt ein Release, das niemand mehr zuordnen kann.
+      - name: Tag gegen internal/version pruefen
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          QUELLE="$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)"
+          if [ "$TAG" != "$QUELLE" ]; then
+            echo "Tag $TAG passt nicht zu internal/version/version.go ($QUELLE)" >&2
+            exit 1
+          fi
+          echo "Version $QUELLE bestaetigt"
+
+      - name: Volle Suite
+        run: scripts/check.sh
+
+      - name: Binaries bauen
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME}"
+          for ziel in linux/amd64 linux/arm64; do
+            GOOS="${ziel%/*}"; GOARCH="${ziel#*/}"
+            for programm in flying-certs-server flying-certs-agent; do
+              test -d "cmd/$programm" || continue
+              export GOOS GOARCH
+              go build -trimpath \
+                -ldflags "-s -w" \
+                -o "dist/${programm}_${VERSION}_${GOOS}_${GOARCH}" \
+                "./cmd/$programm"
+            done
+          done
+          ls -l dist/
+
+      - name: Pruefsummen
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag

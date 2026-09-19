@@ -1,0 +1,7 @@
+/dist/
+/bin/
+*.pem
+*.key
+*.crt
+__pycache__/
+.venv/

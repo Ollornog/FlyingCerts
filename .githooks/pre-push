@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Letzte Bremse vor dem Push. Aktivieren: git config core.hooksPath .githooks
+# Notausgang (nur mit gutem Grund): git push --no-verify
+#
+# Standardfall: `scripts/check.sh` läuft nativ. Wer die Suite lieber in einem Container
+# fährt (gleiche Toolchain wie die CI, unabhängig vom Rechner), legt sich ein `ci-local`
+# in den PATH — dann benutzt der Hook es von selbst.
+#
+# Ist `ci-local` vorhanden, aber Docker nicht ansprechbar, wird der Push auf
+# Feature-Branches ABGEBROCHEN: Wer den Container-Lauf eingerichtet hat, verlässt sich
+# darauf, und auf Feature-Branches läuft keine CI (on.push.branches: [main]). Ein stiller
+# Rückfall auf den Host würde genau dieses Netz entfernen. Beim Push auf `main` genügt der
+# native Lauf, weil dort anschließend die CI als Gate greift.
+#
+# Der native Pfad prüft anschließend selbst, ob die Suite Rückstände hinterlassen hat
+# (das macht sonst `ci-local`, nicht `check.sh`). Ein Test, der schreibt, ist beim
+# zweiten Lauf nicht mehr wiederholbar.
+#
+# Kein Schleifenrisiko: ci-local setzt CI_LOCAL_INSIDE=1 im Container und ruft dort
+# check.sh direkt auf, nicht diesen Hook.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+# ---------------------------------------------------------------------------
+# Nativer Lauf + Rückstands-Check.
+#
+# `exec check.sh` wäre kürzer, ersetzt aber den Prozess — danach lässt sich nichts
+# mehr prüfen. Verglichen wird gegen den Zustand VOR dem Lauf, damit ein bereits
+# schmutziger Arbeitsbaum nicht fälschlich als Rückstand gilt.
+#
+# Die Prüfung selbst steht in `scripts/_residue_check.sh` — derselben Datei, die auch
+# die GitHub-CI fährt. Sie stand einmal fünffach im Umlauf, und die CI-Fassungen
+# ignorierten `.ci-allow-dirty`; das verbindliche Gate widersprach dem lokalen Netz.
+# ---------------------------------------------------------------------------
+run_native_with_residue_check() {
+    local vorher rc=0
+
+    if [[ ! -x "$ROOT/scripts/_residue_check.sh" ]]; then
+        echo "pre-push: ABGEBROCHEN — scripts/_residue_check.sh fehlt." >&2
+        echo "Ohne den Rückstands-Check ist der native Lauf kein Netz." >&2
+        echo "Auf dem Tower: repokit sync" >&2
+        return 1
+    fi
+
+    vorher="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$vorher'" RETURN
+
+    "$ROOT/scripts/_residue_check.sh" snapshot > "$vorher"
+
+    "$ROOT/scripts/check.sh" || rc=$?
+    [[ $rc -ne 0 ]] && return "$rc"
+
+    "$ROOT/scripts/_residue_check.sh" check --seit "$vorher"
+}
+
+# ---------------------------------------------------------------------------
+# Warum antwortet Docker nicht? Die Frage beantworten, statt zu raten.
+#
+# `docker info` taugt als DIAGNOSE nicht: es scheitert, wenn die Gruppe fehlt, UND
+# in einer Shell, die älter ist als das `usermod` — dort ist die Mitgliedschaft längst
+# erteilt, nur dieser Prozess kennt sie nicht. Wer daraus „Gruppe fehlt" schließt,
+# vergibt ein root-äquivalentes Recht ein zweites Mal, ohne dass es nötig wäre.
+#
+#   id -nG "$me"  fragt die Gruppen-Datenbank   -> "darf der Benutzer?"
+#   id -nG        fragt diesen Prozess          -> "weiß diese Shell davon?"
+#
+# Kein `cmd | grep -q`: unter `set -o pipefail` kann SIGPIPE die Pipeline auf 141
+# setzen, obwohl grep 0 lieferte.
+# ---------------------------------------------------------------------------
+docker_diagnose() {
+    local me; me="$(id -un)"
+    if [[ " $(id -nG "$me") " == *" docker "* ]]; then
+        if [[ " $(id -nG) " == *" docker "* ]]; then
+            echo "Die Gruppe 'docker' ist aktiv — also antwortet der Daemon selbst nicht:"
+            echo "    systemctl status docker"
+        else
+            echo "'$me' ist in der Gruppe 'docker', aber DIESE Shell kennt sie noch nicht"
+            echo "(sie ist älter als das 'usermod'). Es fehlt kein Recht — nicht neu vergeben."
+            echo "Denselben Push mit aktiver Gruppe fahren:"
+            echo "    sg docker -c 'git push …'"
+            echo "oder einmal ab- und wieder anmelden."
+        fi
+    else
+        echo "'$me' ist nicht in der Gruppe 'docker':"
+        echo "    sudo usermod -aG docker \"$me\"   (danach neu anmelden)"
+    fi
+    echo
+    echo "Prüfen mit 'getent group docker' bzw. 'id -nG' — nie mit 'docker info'."
+}
+
+# Läuft der Hook bereits im Container, nie erneut eskalieren.
+if [[ "${CI_LOCAL_INSIDE:-}" == "1" ]]; then
+    exec "$ROOT/scripts/check.sh"
+fi
+
+# Git reicht auf stdin je Ref eine Zeile: <local ref> <local sha> <remote ref> <remote sha>
+# Daraus lesen wir, ob main betroffen ist. Kein stdin (manueller Aufruf) => wie Feature-Branch,
+# also die strenge Regel. Fail-closed ist hier die richtige Richtung.
+pushes_main=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+    [[ "$remote_ref" == "refs/heads/main" ]] && pushes_main=1
+done || true
+
+# Spiegelt den Autodetect von ci-local: erst direkt, dann passwortloses sudo.
+# Ein interaktiver sudo-Prompt wäre hier falsch — der Hook darf nicht nach einem
+# Passwort fragen, deshalb nur 'sudo -n'.
+#
+# Als FUNKTIONSTEST ist `docker info` richtig: gefragt ist nur „Container startbar?".
+# Für die MELDUNG danach siehe docker_diagnose().
+docker_ok() {
+    command -v docker >/dev/null 2>&1 || return 1
+    docker info >/dev/null 2>&1 && return 0
+    sudo -n docker info >/dev/null 2>&1
+}
+
+if command -v ci-local >/dev/null 2>&1; then
+    if docker_ok; then
+        echo "pre-push: Testsuite läuft im Container (ci-local) — das dauert, und das ist gut so."
+        # Ein einfacher Lauf. Den Doppellauf (--full), der die Wiederholbarkeit beweist,
+        # fährt die CI bzw. der Release — nicht die kurze Schleife vor jedem Push.
+        exec ci-local
+    fi
+    if [[ "$pushes_main" -eq 0 ]]; then
+        {
+            echo
+            echo "pre-push: ABGEBROCHEN — ci-local ist eingerichtet, aber Docker antwortet nicht."
+            echo
+            echo "Auf Feature-Branches läuft keine CI. Der Container-Lauf ist hier die"
+            echo "einzige Prüfung; ein Rückfall auf den Host würde ungeprüften Code durchlassen."
+            echo
+            docker_diagnose
+        } >&2
+        exit 1
+    fi
+    echo "pre-push: Docker antwortet nicht → nativer Lauf." >&2
+    echo "          Erlaubt, weil auf main anschließend die CI greift." >&2
+fi
+
+run_native_with_residue_check
