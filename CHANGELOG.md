@@ -34,3 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   creation, issuance over DNS-01, renewal with the ARI `replaces` hint, and the
   guarantee that no credential reaches the log. It runs in CI, where it fails
   rather than skips if the test CA is missing.
+- An internal CA that issues agent identities — separate from the public
+  certificates in every respect, and never handed out (ADR-15).
+- Single-use bootstrap tokens, made single-use by an atomic rename rather than
+  a flag, so two simultaneous redemptions cannot both succeed. The guarantee
+  survives a restart.

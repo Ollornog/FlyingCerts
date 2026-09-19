@@ -36,3 +36,4 @@ Konventionen: [README-KONVENTION.md](README-KONVENTION.md).
 * ☑ **[ADR-12](ADR-12-kein-selbstheilen.md)** Bei erkannter Unstimmigkeit wird gemeldet, nicht selbst geheilt
 * ☑ **[ADR-13](ADR-13-go-handwerk.md)** Handwerk — lego v5, atomares Schreiben, Zertifikatstausch im Betrieb
 * ☑ **[ADR-14](ADR-14-dns-anbieter-auswahl.md)** Eine kuratierte Auswahl von DNS-Anbietern statt aller 200
+* ☑ **[ADR-15](ADR-15-eigene-ca-nur-fuer-agenten.md)** Der Vermittler ist doch eine CA — aber nur für Agenten-Ausweise
