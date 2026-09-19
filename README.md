@@ -51,11 +51,18 @@ browser trusts, because your domain is HSTS-preloaded or your users carry phones
 
 ## Installation
 
-Binaries for Linux are attached to each [release](https://github.com/Ollornog/FlyingCerts/releases):
+Binaries for Linux (amd64 and arm64) are attached to each
+[release](https://github.com/Ollornog/FlyingCerts/releases):
 
 ```bash
-curl -fsSLO https://github.com/Ollornog/FlyingCerts/releases/latest/download/SHA256SUMS
-sha256sum -c SHA256SUMS         # verify before you run it
+V=v0.1.0
+B=https://github.com/Ollornog/FlyingCerts/releases/download/$V
+curl -fsSLO $B/SHA256SUMS
+curl -fsSLO $B/flying-certs-server_${V}_linux_amd64
+curl -fsSLO $B/flying-certs-agent_${V}_linux_amd64
+
+sha256sum --ignore-missing -c SHA256SUMS      # verify before you run them
+chmod +x flying-certs-*_${V}_linux_amd64
 ```
 
 Or build from source (Go 1.27+):
@@ -339,7 +346,9 @@ is broken, not the code — so the repeatability promise is demonstrated rather 
 
 ## Status
 
-**Early, and honest about it.** The interfaces are not stable and there is no usable release yet.
+**Early, and honest about it.** `v0.1.0` is out and the binaries work, but the interfaces —
+configuration keys, the HTTP routes, the on-disk layout — are not stable and will change without a
+major version to warn you until `1.0.0`.
 
 All six milestones in [`backlog/`](backlog/) are done. The broker obtains and keeps certificates,
 serves them over mTLS, tracks who collected what and when each identity runs out, warns before a

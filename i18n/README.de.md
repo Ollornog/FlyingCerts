@@ -53,11 +53,18 @@ weil deine Nutzer Telefone mitbringen, die dir nicht gehören.
 
 ## Installation
 
-Binaries für Linux hängen an jedem [Release](https://github.com/Ollornog/FlyingCerts/releases):
+Binaries für Linux (amd64 und arm64) hängen an jedem
+[Release](https://github.com/Ollornog/FlyingCerts/releases):
 
 ```bash
-curl -fsSLO https://github.com/Ollornog/FlyingCerts/releases/latest/download/SHA256SUMS
-sha256sum -c SHA256SUMS         # prüfen, bevor du es ausführst
+V=v0.1.0
+B=https://github.com/Ollornog/FlyingCerts/releases/download/$V
+curl -fsSLO $B/SHA256SUMS
+curl -fsSLO $B/flying-certs-server_${V}_linux_amd64
+curl -fsSLO $B/flying-certs-agent_${V}_linux_amd64
+
+sha256sum --ignore-missing -c SHA256SUMS      # prüfen, bevor du sie ausführst
+chmod +x flying-certs-*_${V}_linux_amd64
 ```
 
 Oder aus den Quellen bauen (Go 1.27+):
@@ -356,8 +363,9 @@ wird, ist kaputt — nicht der Code. So ist die Wiederholbarkeit vorgeführt sta
 
 ## Stand
 
-**Früh, und ehrlich darüber.** Die Schnittstellen sind nicht stabil, es gibt noch keine brauchbare
-Veröffentlichung.
+**Früh, und ehrlich darüber.** `v0.1.0` ist draussen und die Binaries laufen, aber die
+Schnittstellen — Konfigurationsschlüssel, HTTP-Routen, Ablage auf der Platte — sind nicht stabil und
+ändern sich bis `1.0.0` ohne Major-Version als Vorwarnung.
 
 Alle sechs Meilensteine in [`backlog/`](../backlog/) sind erledigt. Der Vermittler holt und hält
 Zertifikate, gibt sie über mTLS aus, führt Buch darüber, wer wann was abgeholt hat und wann welche
