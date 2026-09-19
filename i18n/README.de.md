@@ -132,12 +132,14 @@ wird, ist kaputt — nicht der Code. So ist die Wiederholbarkeit vorgeführt sta
 **Früh, und ehrlich darüber.** Die Schnittstellen sind nicht stabil, ein brauchbares Release gibt es
 noch nicht.
 
-Was da ist: das Repository, das Test-Tor und das Fundament — atomares Schreiben mit korrekten
-Rechten und die Zertifikatsuntersuchung (Paarprüfung, Restlaufzeit, Erneuerungszeitpunkt). Beides
-vollständig getestet.
+Was da ist, alles getestet: atomares Schreiben mit durchgesetzten Rechten · die
+Zertifikatsuntersuchung (Paarprüfung, Restlaufzeit, Erneuerungszeitpunkt) · das ACME-Konto, das
+geladen und nie stillschweigend ersetzt wird · die Erneuerungsentscheidung, zuerst nach ARI und
+ersatzweise nach einem Anteil der Laufzeit · die Serialisierung konkurrierender
+DNS-01-Challenge-Einträge.
 
-Was noch fehlt: die ACME-Seite, die mTLS-Schnittstelle, der Agent. Das sind die Meilensteine **M-1**
-bis **M-5** in [`backlog/`](../backlog/).
+Was noch fehlt: das Zertifikat wirklich durchgängig zu holen, die mTLS-Schnittstelle und der Agent.
+Das sind die Meilensteine **M-1** bis **M-5** in [`backlog/`](../backlog/).
 
 Die Architekturentscheidungen fielen **vor** dem Code, aus der Untersuchung dessen, was vergleichbare
 Projekte falsch gemacht haben — jede ist als ADR in [`backlog/`](../backlog/) festgehalten und nennt
@@ -148,4 +150,4 @@ MIT-Lizenz.
 
 ## Danksagung
 
-Icon: *(Attribution offen — siehe Hinweis)*
+Icon: <a href="https://www.flaticon.com/de/autoren/slidicon" target="_blank" rel="noopener">Zertifikat Icons erstellt von Slidicon - Flaticon</a>

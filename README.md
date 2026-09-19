@@ -126,12 +126,13 @@ is broken, not the code — so the repeatability promise is demonstrated rather 
 
 **Early, and honest about it.** The interfaces are not stable and there is no usable release yet.
 
-What exists: the repository, the test gate, and the groundwork — atomic file writing with correct
-permissions, and certificate inspection (pair validation, remaining lifetime, renewal timing). Both
-fully tested.
+What exists, all of it tested: atomic file writing with enforced permissions · certificate
+inspection (pair validation, remaining lifetime, renewal timing) · the ACME account, which is loaded
+and never silently replaced · the renewal decision, ARI first and a fraction of the lifetime as
+fallback · serialisation of competing DNS-01 challenge records.
 
-What does not exist yet: the ACME side, the mTLS API, the agent. Those are milestones **M-1** to
-**M-5** in [`backlog/`](backlog/).
+What does not exist yet: actually obtaining a certificate end to end, the mTLS API, and the agent.
+Those are milestones **M-1** to **M-5** in [`backlog/`](backlog/).
 
 The design decisions were made **before** the code, by studying what comparable projects got wrong —
 each one is recorded as an ADR in [`backlog/`](backlog/) naming the mistake it avoids. If you
@@ -141,4 +142,4 @@ MIT license.
 
 ## Credits
 
-Icon: *(attribution pending — see issue)*
+Icon: <a href="https://www.flaticon.com/authors/slidicon" target="_blank" rel="noopener">Certificate icons created by Slidicon - Flaticon</a>
