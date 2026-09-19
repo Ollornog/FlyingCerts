@@ -21,3 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Serialisation of orders competing for the same DNS-01 challenge record.
 - A logging redactor that removes known secrets from anything the ACME library
   writes, by value as well as by attribute name.
+- Certificate issuance over DNS-01, with the ARI `replaces` hint so renewals are
+  exempt from rate limits.
+- A curated set of seven DNS providers, including `rfc2136` and `acmedns` so no
+  provider is a dead end.

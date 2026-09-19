@@ -96,6 +96,30 @@ The broker hands one certificate *and its private key* to every host authorised 
 sometimes the only option — but the key travels, and every host holding it shares one fate. Expiry is
 then a property of the certificate, not of the host.
 
+## DNS providers
+
+DNS-01 is the only challenge this tool uses, so it needs to write a TXT record. Compiled in:
+
+`acmedns` · `cloudflare` · `desec` · `digitalocean` · `hetzner` · `rfc2136` · `route53`
+
+That is seven out of lego's 200-plus, and the choice is deliberate: importing all of them costs
+**1546 built packages instead of 424**, dragging in the SDKs of AWS, Azure, Google Cloud, Alibaba,
+Akamai and others. For a program whose job is holding private keys, that supply chain works
+against the purpose.
+
+**Your provider is not listed? You are not stuck**, and that is what makes the short list
+defensible:
+
+- **`rfc2136`** speaks to any standard authoritative DNS server (BIND, Knot, PowerDNS) using
+  dynamic update with a TSIG key — and a TSIG key can be scoped to a single record name.
+- **`acmedns`** delegates challenge records by CNAME to a tiny service that can do nothing else.
+  It needs **no provider token at all**, which is a better security model than handing out a
+  full DNS API token in the first place.
+
+Either of those beats a broad provider token. If you still want your own, add one import line in
+`internal/acme/providers.go` and rebuild — see [ADR-14](backlog/ADR-14-dns-anbieter-auswahl.md)
+for why this is a decision rather than a default.
+
 ## Tests & CI
 
 ```bash

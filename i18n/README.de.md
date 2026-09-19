@@ -100,6 +100,32 @@ Der Vermittler gibt ein Zertifikat *samt privatem Schlüssel* an jeden dafür be
 Einfacher, und manchmal die einzige Möglichkeit — aber der Schlüssel reist, und alle Hosts, die ihn
 halten, teilen ein Schicksal. Ablauf ist dann eine Eigenschaft des Zertifikats, nicht des Hosts.
 
+## DNS-Anbieter
+
+DNS-01 ist die einzige Challenge, die dieses Werkzeug nutzt — es muss also einen TXT-Eintrag
+schreiben können. Einkompiliert sind:
+
+`acmedns` · `cloudflare` · `desec` · `digitalocean` · `hetzner` · `rfc2136` · `route53`
+
+Das sind sieben von legos über 200, und die Auswahl ist Absicht: alle zu importieren kostet
+**1546 gebaute Pakete statt 424** und zieht die SDKs von AWS, Azure, Google Cloud, Alibaba,
+Akamai und weiteren mit. Für ein Programm, dessen Aufgabe die Verwahrung privater Schlüssel ist,
+arbeitet diese Lieferkette gegen den Zweck.
+
+**Dein Anbieter fehlt? Du sitzt trotzdem nicht fest** — und genau das macht die kurze Liste
+vertretbar:
+
+- **`rfc2136`** spricht mit jedem üblichen autoritativen DNS-Server (BIND, Knot, PowerDNS) per
+  dynamischem Update mit TSIG-Schlüssel — und ein TSIG-Schlüssel lässt sich auf einen einzelnen
+  Eintragsnamen einschränken.
+- **`acmedns`** delegiert die Challenge-Einträge per CNAME an einen winzigen Dienst, der sonst
+  nichts kann. Es braucht **gar keinen Anbieter-Token**, was ohnehin das bessere
+  Sicherheitsmodell ist als ein vollmächtiger DNS-API-Token.
+
+Beides ist einem breiten Anbieter-Token vorzuziehen. Wer trotzdem seinen eigenen will, ergänzt
+eine Import-Zeile in `internal/acme/providers.go` und baut neu — die Begründung steht in
+[ADR-14](../backlog/ADR-14-dns-anbieter-auswahl.md).
+
 ## Tests & CI
 
 ```bash
