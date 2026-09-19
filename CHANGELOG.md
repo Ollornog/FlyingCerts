@@ -39,3 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Single-use bootstrap tokens, made single-use by an atomic rename rather than
   a flag, so two simultaneous redemptions cannot both succeed. The guarantee
   survives a restart.
+- An agent registry that answers "may this agent have this certificate?" by
+  lookup, never by inference — the gap none of the comparable projects closes.
+- The agent-facing API over mTLS: enrolment, certificate fetch honouring the
+  delivery mode, identity renewal, and an append-only audit log.
+- Rate limiting on enrolment, keyed on the remote address rather than on
+  anything the caller can choose, with a bounded counter store.
