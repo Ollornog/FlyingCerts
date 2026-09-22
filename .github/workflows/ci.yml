@@ -15,7 +15,14 @@ jobs:
     name: Tests und Hygiene
     runs-on: ubuntu-latest   # oeffentliches Repo -> niemals self-hosted (Fork-PRs)
     steps:
+      # `persist-credentials: false` ist EIGENE Haertung, kein belegter Standard —
+      # GitHub empfiehlt es nirgends ausdruecklich. Seit checkout@v6 liegt das Token
+      # in $RUNNER_TEMP statt in .git/config; es zaehlt dort, wo nach dem Checkout
+      # fremder Code laeuft — hier `go mod download` und die Test-CA-Container.
+      # Kein Job in diesem Repo pusht selbst, also braucht keiner eine Ausnahme.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:

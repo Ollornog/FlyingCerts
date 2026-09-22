@@ -33,6 +33,16 @@ def read(*parts) -> str:
 
 FILES = hygiene.getrackte_dateien(ROOT)
 
+# ---------- Ist die Dateiliste ueberhaupt vollstaendig? ----------
+# Steht bewusst GANZ OBEN, vor dem ersten Verbraucher: eine leere oder beschnittene
+# Liste macht jede Pruefung darunter gruen, ohne dass etwas angesehen wurde — und
+# ist von "alles sauber" nicht zu unterscheiden. Der gemessene Fall war nicht leer,
+# sondern sechs fehlende Dateien: `git archive` liess `.github/` weg, also genau die
+# Workflows, die weiter unten geprueft werden.
+treffer = hygiene.pruefe_dateiliste_plausibel(FILES, root=ROOT)
+assert not treffer, f"Dateiliste unvollstaendig: {treffer}"
+print(f"  {len(FILES)} getrackte Dateien, Liste gegen HEAD vollstaendig")
+
 # ---------- Version: version.go und CHANGELOG muessen zusammenpassen ----------
 # Go-Variante des Kit-Checks (siehe Modul-Docstring).
 gv = re.search(r'^const Version = "([^"]+)"', read("internal", "version", "version.go"), re.M)
@@ -96,7 +106,16 @@ assert not treffer, f"Workflow ohne permissions: {treffer}"
 
 treffer = hygiene.pruefe_kein_self_hosted_runner(ROOT, FILES)
 assert not treffer, f"self-hosted Runner in oeffentlichem Repo: {treffer}"
-print("  Workflows: SHA-gepinnt, permissions gesetzt, ubuntu-latest")
+
+# EIGENE Haertung, kein belegter Standard — GitHub empfiehlt `persist-credentials:
+# false` nirgends ausdruecklich. Seit checkout@v6 liegt das Token in $RUNNER_TEMP
+# statt in .git/config, es zaehlt also dort, wo nach dem Checkout fremder Code
+# laeuft. KEIN Job in diesem Repo pusht selbst (`gh release create` nimmt GH_TOKEN
+# aus der Job-Umgebung, nicht die git-Credentials), darum steht hier keine Ausnahme.
+treffer = hygiene.pruefe_persist_credentials(ROOT, FILES)
+assert not treffer, f"checkout ohne persist-credentials: false: {treffer}"
+print("  Workflows: SHA-gepinnt, permissions gesetzt, ubuntu-latest, "
+      "checkout ohne Token im Arbeitsbaum")
 
 # ---------- CHANGELOG folgt Keep a Changelog ----------
 treffer = hygiene.pruefe_changelog_kategorien(ROOT, POLICY)
@@ -138,10 +157,14 @@ treffer = hygiene.pruefe_ausfuehrbar(ROOT, ["scripts/check.sh", "scripts/_residu
 assert not treffer, f"nicht ausfuehrbar: {treffer}"
 print("  scripts/check.sh ausfuehrbar")
 
-# ---------- Was das Kit noch mitbringt und hier bis 2026-09-22 ungenutzt lag ----------
+# ---------- Was das Kit noch mitbringt ----------
 # Nachgezählt beim Bau des Aufruf-Waechters (repokit 0.13.0): von 17 ausgelieferten
 # Pruefungen rief dieses Repo 10. Die fehlenden sieben waren kein Verzicht, sondern
 # nie nachgezogen — und nichts hat es gemerkt.
+# Stand repokit 0.14.0: 21 ausgelieferte Pruefungen, 17 davon werden hier gerufen,
+# 4 sind unten begruendet ausgenommen. Die drei neuen (Dateiliste, persist-credentials,
+# blanke Adressen) stehen jeweils bei der Pruefung, zu der sie fachlich gehoeren, nicht
+# in diesem Abschnitt.
 
 # Erlaubt sind neben den neutralen Beispieladressen nur: die Badge-Quelle, die
 # Pflicht-Attribution des Logos (Flaticon-Lizenz) und die ACME-Verzeichnisse von
@@ -153,7 +176,24 @@ treffer = hygiene.pruefe_adressen(ROOT, FILES, POLICY,
                                                       r"(www\.)?flaticon\.com",
                                                       r"acme(-staging)?-v02\.api\.letsencrypt\.org"])
 assert not treffer, f"nicht-neutrale Adresse in Doku/Code: {treffer}"
-print("  nur neutrale Beispieladressen")
+
+# Dieselbe Frage noch einmal fuer Hostnamen OHNE `https://` davor — die Luecke, durch
+# die anderswo ein realer Firmenname ins oeffentliche Repo kam: `pruefe_adressen`
+# sucht nur URLs mit Schema, und das Muster fuer private Infrastruktur verlangt drei
+# Namensteile, also faellt eine blanke Second-Level-Domain durch beide.
+#
+# Der Grundstock ist DURCHGESEHEN und freigegeben, nicht automatisch erzeugt: jeder
+# der sieben Namen wurde einzeln angesehen und steht an einer Stelle, wo er hingehoert
+# (Go-Modulpfade in go.mod/go.sum, das Container-Register der Test-CA, die Quellen in
+# zwei ADRs, die Python-Belege des Kits). Ab jetzt wird jede NEUE fremde Adresse rot —
+# und eine automatisch nachgezogene Liste waere genau der Weg, auf dem der naechste
+# echte Kundenname stillschweigend abgesegnet wuerde.
+treffer = hygiene.pruefe_blanke_adressen(ROOT, FILES, POLICY,
+                                         grundstock=["python.org", "devguide.python.org",
+                                                     "ghcr.io", "golang.org", "pkg.go.dev",
+                                                     "modernc.org", "software.sslmate.com"])
+assert not treffer, f"fremder Hostname ohne Schema: {treffer}"
+print("  nur neutrale Beispieladressen, auch ohne Schema davor")
 
 treffer = hygiene.pruefe_run_all_sammelt_automatisch(ROOT)
 assert not treffer, f"run_all.py: {treffer}"

@@ -34,7 +34,16 @@
     "('paperless.<domain>.de' trifft, '<domain>.de' allein nicht).",
     "Er stand einmal in der Liste und fiel nur deshalb nicht auf, weil die",
     "Identitaets-Maskierung die URL-Zeilen zufaellig traf - in einem Repo mit Impressum",
-    "und Pages-URL schlug er sofort an."
+    "und Pages-URL schlug er sofort an.",
+    "sha256 der kleingeschriebenen Form, 16 Zeichen). Der Abgleich lief in BEIDE Richtungen",
+    "deshalb auf diese Liste um und loescht die eigene.",
+    "2026-09-22: vier Pruefsummen aus dem eigenen Zaun eines weiteren Repos uebernommen",
+    "(gleiches Format: sha256 der kleingeschriebenen Form, erste 16 Zeichen). Der Abgleich",
+    "lief in BEIDE Richtungen und war dort unangenehmer: sechs Namen aus diesem Kit kannte",
+    "die dortige Fassung nicht — ein zweites System ist nicht nur doppelt, sondern doppelt",
+    "unvollstaendig. Es zieht deshalb auf diese Liste um und loescht die eigene.",
+    "(Der Repo-Name steht hier bewusst NICHT: diese Datei wandert per sync in oeffentliche",
+    "Repos, und der Name ist selbst einer der geschuetzten. Der Zaun hat genau das gefangen.)"
   ],
   "private_namen_sha256_16": [
     "061429fadd2701e3",
@@ -43,10 +52,14 @@
     "6bb8c80cfa0e95ae",
     "84ef0efe0a878ba1",
     "a227c36a926bd7f6",
+    "a5b367bcd6d2c02e",
+    "a81a73017f17239a",
     "a994ffcab684f9e2",
     "cb034381b0eee532",
+    "d0ff9830f233311d",
     "e177ac5b0aa46203",
-    "e71b5222584b6528"
+    "e71b5222584b6528",
+    "fb5fe538ef4d7f6a"
   ],
   "erlaubte_identitaet": "github\\.com/[A-Za-z0-9-]+/(?:{projekte})|ghcr\\.io/[a-z0-9-]+/[a-z0-9-]+|GITHUB_REPOSITORY_OWNER|github\\.repository_owner|OWNER_LC",
   "erlaubte_hosts": [
