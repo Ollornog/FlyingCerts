@@ -17,6 +17,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 
 HIER = os.path.dirname(os.path.abspath(__file__))
 
@@ -830,4 +831,73 @@ def pruefe_uebersetzungs_struktur(root: str, paare: list[tuple[str, str]]) -> li
             fehlt = [t for _, t in oh[len(uh):]] or [t for _, t in uh[len(oh):]]
             wo = uebersetzung if len(oh) > len(uh) else original
             treffer.append(f"{wo}: {abs(len(oh) - len(uh))} Überschrift(en) fehlen — {fehlt[:3]}")
+    return treffer
+
+
+def pruefe_kit_prueffunktionen_gerufen(root: str, ausgenommen: dict[str, str] | None = None,
+                                       testverzeichnis: str = "tests") -> list[str]:
+    """Wird jede `pruefe_*` des Kits im Repo auch AUFGERUFEN?
+
+    WARUM ES DIESE PRÜFUNG GIBT (2026-09-22, dritter Fall derselben Sorte): Das Kit
+    liefert geprüfte Funktionen aus, `repokit sync` kopiert sie in jedes Repo, und
+    repokits Eigentests belegen, dass sie richtig rechnen. Nur belegt **nichts**, dass
+    ein Repo sie danach ruft. Gemessen am 2026-09-22:
+
+    - `pruefe_python_matrix`, `pruefe_requires_python`, `pruefe_python_matrix_regel`
+      lagen in sieben Repos und wurden in **keinem** gerufen (seit 2026-09-21).
+    - `pruefe_kein_abbruch_auf_default_branch` wurde in **keinem** Repo gerufen.
+    - `endpoint-check` trug das ganze `hygiene.py` samt Policy im Baum und rief
+      daraus **keine einzige** Prüfung.
+
+    Jedes Mal sah die Suite grün aus, und jedes Mal war die Zusage, die das Kit gibt,
+    unbelegt. Dieselbe Lehre steht seit dem Manifest-Vendoring in `manifest.py`:
+    *eine Prüfung, die niemand ruft, ist keine.* Sie hat sich dreimal wiederholt, weil
+    niemand sie gemessen hat — das tut jetzt diese Funktion.
+
+    Ausnehmen ist erlaubt, aber nur **mit Grund** — deshalb ein dict, keine Liste:
+
+        ausgenommen={"pruefe_python_matrix": "Go-Repo, ci.yml hat keine Python-Matrix"}
+
+    So steht die Begründung im Repo und nicht im Kopf dessen, der sie weggelassen hat.
+    Ein leerer Grund zählt nicht als Begründung und wird gemeldet.
+    """
+    import inspect
+
+    ausgenommen = ausgenommen or {}
+    treffer = []
+
+    for name, grund in sorted(ausgenommen.items()):
+        if not str(grund).strip():
+            treffer.append(f"Ausnahme {name!r} ohne Begründung — ein Grund ist Pflicht")
+
+    angeboten = {n for n, _ in inspect.getmembers(sys.modules[__name__], inspect.isfunction)
+                 if n.startswith("pruefe_")}
+    angeboten.discard("pruefe_kit_prueffunktionen_gerufen")  # sich selbst nicht fordern
+
+    quelle = []
+    wurzel = os.path.join(root, testverzeichnis)
+    for pfad, verzeichnisse, dateien in os.walk(wurzel):
+        verzeichnisse[:] = [v for v in verzeichnisse if v not in ("_kit", "__pycache__")]
+        for d in dateien:
+            if d.endswith(".py"):
+                try:
+                    with open(os.path.join(pfad, d), encoding="utf-8") as fh:
+                        quelle.append(fh.read())
+                except OSError:
+                    continue
+    text = "\n".join(quelle)
+
+    for name in sorted(angeboten):
+        if name in ausgenommen:
+            continue
+        # Der Aufruf, nicht die blosse Erwähnung in einem Kommentar.
+        if not re.search(rf"\b{re.escape(name)}\s*\(", text):
+            treffer.append(f"{name} liegt im Kit, wird aber nirgends aufgerufen "
+                           f"(rufen oder mit Grund in `ausgenommen` eintragen)")
+
+    unbekannt = set(ausgenommen) - angeboten
+    for name in sorted(unbekannt):
+        treffer.append(f"Ausnahme {name!r} nennt keine Prüfung des Kits — Tippfehler "
+                       f"oder aus dem Kit entfernt?")
+
     return treffer

@@ -52,6 +52,10 @@
   "erlaubte_hosts": [
     "example\\.(?:com|org|net|de)",
     "localhost",
+    "[a-z0-9-]+\\.test",
+    "[a-z0-9-]+\\.example",
+    "[a-z0-9-]+\\.invalid",
+    "[a-z0-9-]+\\.localhost",
     "127\\.0\\.0\\.1",
     "github\\.com",
     "keepachangelog\\.com",
@@ -175,5 +179,14 @@
     ]
   },
   "_changelog_quelle": "https://keepachangelog.com/en/1.1.0/",
-  "_actions_quelle": "GitHub Docs, Security hardening for GitHub Actions"
+  "_actions_quelle": "GitHub Docs, Security hardening for GitHub Actions",
+  "_erlaubte_hosts_quelle": [
+    "RFC 2606 §2 reserviert .test, .example, .invalid und .localhost dauerhaft fuer",
+    "Tests und Dokumentation (bestaetigt in RFC 6761). Bis 2026-09-22 kannte die Liste",
+    "nur 'example.(com|org|net|de)' und den blanken Namen 'localhost' — ein Testfall mit",
+    "'ca.invalid' (FlyingCerts, internal/acme/*_test.go) wurde damit als Leck gemeldet,",
+    "obwohl er genau die Norm befolgt. Ein Fehlalarm zaehlt als Fehler: er erzieht dazu,",
+    "die Pruefung zu umgehen statt ihr zu glauben.",
+    "Quelle: https://www.rfc-editor.org/rfc/rfc2606.txt"
+  ]
 }
