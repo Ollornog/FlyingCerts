@@ -12,6 +12,7 @@ so passt derselbe Code in ein `assert not pruefe_...(...)` wie in ein sammelndes
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -20,6 +21,13 @@ import subprocess
 import sys
 
 HIER = os.path.dirname(os.path.abspath(__file__))
+
+# TLD-Liste bewusst ENG: jede weitere TLD ist auch ein moeglicher Attributname oder
+# eine Dateiendung (`.sh`, `.py`, `.io` sind alle drei zugleich echte TLDs).
+_HOST_RE = re.compile(
+    r"(?<![\w.@/:-])[a-z0-9][a-z0-9-]{1,40}(?:\.[a-z0-9-]{2,40})*"
+    r"\.(?:com|net|org|de|at|ch|eu|io|ai|dev|app|info|co|me|tv|xyz)(?![\w-])",
+    re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
@@ -901,3 +909,227 @@ def pruefe_kit_prueffunktionen_gerufen(root: str, ausgenommen: dict[str, str] | 
                        f"oder aus dem Kit entfernt?")
 
     return treffer
+
+
+def pruefe_dateiliste_plausibel(dateien: list[str], mindestens: int = 5,
+                                root: str | None = None) -> list[str]:
+    """Ist die Dateiliste vollständig? — sonst prüft jede Prüfung danach zu wenig.
+
+    WARUM (2026-09-22, gemeldet von der SpecDoor-Session): `pruefe_geheimnisse([], …)`
+    und `pruefe_private_infrastruktur([], …)` geben beide **grün** zurück. Eine leere
+    Liste ist damit von „alles sauber" nicht zu unterscheiden.
+
+    ⚠️ DER ECHTE FALL WAR ABER NICHT „LEER". Bei `ci-local` fehlten über `git archive`
+    **6 von 1326** Dateien — das ganze `.github/`, weil `.gitattributes` es per
+    `export-ignore` ausschliesst. Genau die Workflows also, die `pruefe_actions_sha_gepinnt`
+    und `pruefe_workflow_permissions` prüfen sollen. Eine Null-Prüfung hätte das
+    durchgewinkt; deshalb zählt diese Funktion mit `root` gegen `git ls-tree -r HEAD`
+    und nennt die fehlenden Pfade, statt nur eine Zahl zu vergleichen.
+
+    `mindestens` bleibt als Notnagel für den Fall, dass kein git erreichbar ist.
+    """
+    treffer = []
+    if len(dateien) < mindestens:
+        treffer.append(f"nur {len(dateien)} getrackte Datei(en) gefunden (erwartet: "
+                       f"mindestens {mindestens}) — die Hygiene-Prüfungen hätten nichts "
+                       f"zu prüfen und wären trotzdem grün. Richtiges Verzeichnis?")
+        return treffer
+
+    if root is None:
+        return treffer
+
+    try:
+        lauf = subprocess.run(["git", "-C", root, "ls-tree", "-r", "--name-only", "HEAD"],
+                              capture_output=True, text=True, check=False)
+    except OSError:
+        return treffer
+    if lauf.returncode != 0:
+        return treffer
+
+    im_baum = {z for z in lauf.stdout.splitlines() if z.strip()}
+    fehlend = sorted(im_baum - set(dateien))
+    if fehlend:
+        treffer.append(f"{len(fehlend)} von {len(im_baum)} Dateien fehlen in der "
+                       f"geprüften Liste — die Prüfungen sehen sie nie an. "
+                       f"Erste: {', '.join(fehlend[:5])}"
+                       + (" …" if len(fehlend) > 5 else ""))
+    return treffer
+
+def pruefe_persist_credentials(root: str, dateien: list[str],
+                               ausgenommen: dict[str, str] | None = None) -> list[str]:
+    """Jeder `actions/checkout`-Schritt setzt `persist-credentials: false`.
+
+    EBENE DIESER REGEL — bitte nicht hochstufen: Das ist **eigene Härtung**, kein
+    belegter Standard. GitHub empfiehlt `persist-credentials: false` nirgends
+    ausdrücklich (geprüft am 2026-09-22 an der Secure-Use-Doku und am README von
+    `actions/checkout`). Wer das weitergibt, nennt die Ebene mit.
+
+    WAS ES BRINGT, GENAU: Mit der Vorgabe (`true`) legt checkout das Token so ab, dass
+    **jeder spätere Schritt im selben Job** es lesen kann. Seit v6 liegt es unter
+    `$RUNNER_TEMP` statt in `.git/config` — das Risiko ist damit kleiner als die oft
+    zitierte `.git/config`-Begründung nahelegt, aber es verschwindet nicht. Es zählt
+    dort, wo nach dem Checkout **fremder Code** läuft: `pip install -e`, ein
+    Build-Skript, eine Action eines Dritten. Der `tj-actions/changed-files`-Vorfall ist
+    der bekannte Fall.
+
+    WO ES FALSCH WÄRE: Ein Job, der danach selbst pusht (`git push`, `peaceiris/…`,
+    ein Tag-Schubser), braucht das Token im Job. Dort gehört eine Ausnahme **mit Grund**
+    hin — dict, keine Liste, damit die Begründung im Repo steht:
+
+        ausgenommen={"release.yml:deploy": "pusht den Tag selbst"}
+
+    Der Schlüssel ist `<workflow-datei>:<job>`, beides ohne Pfad.
+    """
+    ausgenommen = ausgenommen or {}
+    treffer = []
+
+    for name, grund in sorted(ausgenommen.items()):
+        if not str(grund).strip():
+            treffer.append(f"Ausnahme {name!r} ohne Begründung — ein Grund ist Pflicht")
+
+    for rel in dateien:
+        if not rel.startswith(".github/workflows/") or not rel.endswith((".yml", ".yaml")):
+            continue
+        inhalt = _lies(root, rel)
+        if inhalt is None:
+            continue
+        datei = os.path.basename(rel)
+        job = "?"
+        for i, zeile in enumerate(inhalt.splitlines()):
+            ohne_kommentar = zeile.split("#", 1)[0]
+            # Jobnamen stehen auf Einrückungstiefe 2 unter `jobs:`.
+            m = re.match(r"^  ([A-Za-z_][\w-]*):\s*$", ohne_kommentar)
+            if m:
+                job = m.group(1)
+            if not re.search(r"uses:\s*actions/checkout@", ohne_kommentar):
+                continue
+            schluessel = f"{datei}:{job}"
+            if schluessel in ausgenommen:
+                continue
+            # `with:` gehört zum Schritt; der Schritt endet beim nächsten `- ` auf
+            # derselben oder geringerer Einrückung. 12 Zeilen reichen dafür weit.
+            block = "\n".join(inhalt.splitlines()[i:i + 12])
+            naechster = re.search(r"\n\s*- ", block)
+            if naechster:
+                block = block[:naechster.start()]
+            if not re.search(r"persist-credentials:\s*false", block):
+                treffer.append(f"{rel}:{i + 1} (Job {job}): actions/checkout ohne "
+                               f"`persist-credentials: false` — setzen oder als "
+                               f"'{schluessel}' mit Grund ausnehmen")
+
+    unbekannt = {k for k in ausgenommen if ":" not in k}
+    for k in sorted(unbekannt):
+        treffer.append(f"Ausnahme {k!r} hat nicht die Form '<workflow.yml>:<job>'")
+
+    return treffer
+
+
+def _ist_code_kette(text: str, treffer) -> bool:
+    """Steht der Treffer in einer Attribut-/Methodenkette statt als Hostname?
+
+    Der verräterische Teil steht DAHINTER, nicht davor: `merkmale.de.forEach(fn)`
+    beginnt mit `merkmale`, dem also kein Punkt vorausgeht — erst `.forEach(` macht
+    die Kette erkennbar. Ein Hostname wird nie mit `.name(` fortgesetzt.
+    """
+    davor = text[max(0, treffer.start() - 1):treffer.start()]
+    if davor == ".":
+        return True
+
+    wert = treffer.group(0)
+    # GROSSBUCHSTABEN = Code- oder Dateikonvention, kein Hostname. Belegt an
+    # `log.Info(` / `entry.Info(` (Go, FlyingCerts) und `README.de in sync.`
+    # (Prosa in C22s CLAUDE.md) — drei Fehlalarme aus einem Lauf.
+    # ⚠️ GRENZE, bewusst in Kauf genommen: ein Host, der GEMISCHT geschrieben steht
+    # (`Auer.AT`), faellt damit durch. Der echte Fund, der diese Pruefung ausgeloest
+    # hat, stand klein, und so stehen Hostnamen praktisch immer. Ein
+    # Fehlalarm erzieht dazu, die Pruefung zu umgehen; diese Luecke tut das nicht.
+    if wert != wert.lower():
+        return True
+
+    rest = text[treffer.end():treffer.end() + 40]
+    # `log.info(` ist ein Aufruf, kein Host — auch ganz klein geschrieben.
+    if rest.startswith("("):
+        return True
+    return bool(re.match(r"\.[A-Za-z_]\w*\s*[(=]", rest))
+
+
+def _host_kandidaten(inhalt: str, ist_python: bool) -> set[str]:
+    """Hostnamen-Kandidaten aus einem Dateiinhalt — Code-Konstrukte bleiben draussen.
+
+    ZWEI SCHRITTE, nicht einer. Der AST grenzt bei Python die **Menge** ein (nur
+    String-Literale und Kommentare, kein Bezeichner-Rauschen). Die **Form** jedes
+    Kandidaten wird danach trotzdem geprüft — denn eingebetteter JavaScript-Code steht
+    in einem Python-String und ist für den AST ein ganz normales Literal.
+
+    Belegt an C22s `gallery/build.py`: `merkmale.de.forEach(…)` liegt dort in einem
+    Python-String. Der erste Entwurf verliess sich allein auf den AST und meldete es
+    als Host — die Fassung ohne Formprüfung war also genau so falsch wie eine ohne AST.
+    """
+    def aus_text(text: str) -> set[str]:
+        return {m.group(0) for m in _HOST_RE.finditer(text)
+                if not _ist_code_kette(text, m)}
+
+    if ist_python:
+        try:
+            baum = ast.parse(inhalt)
+        except SyntaxError:
+            return aus_text(inhalt)
+        roh: set[str] = set()
+        for k in ast.walk(baum):
+            if isinstance(k, ast.Constant) and isinstance(k.value, str):
+                roh |= aus_text(k.value)
+        for zeile in inhalt.splitlines():
+            if "#" in zeile:
+                roh |= aus_text(zeile.split("#", 1)[1])
+        return roh
+    return aus_text(inhalt)
+
+def pruefe_blanke_adressen(root: str, dateien: list[str], policy: dict,
+                           zusaetzliche_hosts: list[str] | None = None,
+                           grundstock: list[str] | None = None) -> list[str]:
+    """Fremde Hostnamen OHNE `https://` davor — die Lücke, durch die ein Kundenname fiel.
+
+    WARUM (2026-09-22): In einem **öffentlichen** Repo standen ein realer Firmenname
+    und zwei real registrierte `.at`-Domains als Test-Fixtures. Gemeldet hat es nichts:
+    `pruefe_adressen` sucht nur URLs **mit Schema**, und das Muster in
+    `pruefe_private_infrastruktur` verlangt **drei** Namensteile (`sub.domain.tld`) —
+    eine blanke Second-Level-Domain fällt durch beide.
+
+    `grundstock` ist die vom Menschen **einmal durchgesehene** Liste der Hosts, die im
+    Repo bereits stehen und in Ordnung sind. Ab dann ist jede NEUE Adresse rot.
+    ⚠️ Er darf nicht automatisch erzeugt und committet werden — genau so segnet man den
+    nächsten echten Kundennamen ab (dieselbe Falle wie bei einer Baseline, die wächst,
+    weil niemand hinsieht).
+
+    VIER FALLEN, alle an echten Stellen gemessen — die Tests halten sie fest:
+    1. Dateinamen mit Sprachkürzel: `login.de.html` liefert `login.de`. Der Treffer
+       sitzt am **Anfang** des Namens, wo ein Endungs-Filter nicht hinsieht.
+    2. JavaScript in einem Python-String — s. `_host_kandidaten`.
+    3. Kurze Attributnamen, die TLDs sind (`obj.it`). Gegenprobe: `self.cfg.base_url`,
+       `d.get`, `sys.exit` lösen NICHT aus, weil `url`/`get`/`exit` keine TLDs sind.
+    4. Angreifer-Platzhalter der Form `evil.<tld>` / `attacker.<tld>` sind **real
+       registrierte** Domains. Sie gehören auf `.example`/`.invalid`/`.test`, NICHT
+       auf eine Erlaubnisliste. (Hier bewusst ohne die echte Endung geschrieben:
+       diese Datei wird nach `repokit sync` in öffentliche Repos kopiert, und ein
+       Negativbeispiel im Klartext wäre dort dasselbe Problem, das es beschreibt.)
+    """
+    erlaubt_liste = list(policy["erlaubte_hosts"]) + list(zusaetzliche_hosts or [])
+    erlaubt = re.compile(r"(?:^|\.)(?:" + "|".join(erlaubt_liste) + r")$", re.IGNORECASE)
+    gesegnet = {h.lower() for h in (grundstock or [])}
+
+    treffer = []
+    for rel, inhalt in _texte(root, dateien, policy):
+        for host in sorted(_host_kandidaten(inhalt, rel.endswith(".py"))):
+            klein = host.lower()
+            if klein in gesegnet or erlaubt.search(host):
+                continue
+            # Falle 1: der Treffer ist ein PRAEFIX eines Dateinamens (`login.de.html`).
+            if re.search(rf"{re.escape(host)}\.[a-z0-9]{{1,5}}\b", inhalt, re.IGNORECASE):
+                continue
+            # Pfadbestandteil (`scripts/check.sh`) oder Dateiendung am Wortende.
+            if re.search(rf"[\w./-]/{re.escape(host)}\b", inhalt):
+                continue
+            treffer.append(f"{rel}: {host} — fremder Hostname ohne Schema. Neutral machen "
+                           f"(RFC 2606: .example/.invalid/.test) oder, wenn er dort "
+                           f"hingehoert, nach Durchsicht in den Grundstock aufnehmen")
+    return sorted(set(treffer))

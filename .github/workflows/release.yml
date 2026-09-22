@@ -14,7 +14,13 @@ jobs:
     permissions:
       contents: write        # nur dieser Job legt das Release an
     steps:
+      # `persist-credentials: false` ist EIGENE Haertung, kein belegter Standard
+      # (siehe ci.yml). Dieser Job veroeffentlicht zwar, aber ueber `gh release
+      # create` mit GH_TOKEN aus der Job-Umgebung — er braucht die git-Credentials
+      # im Arbeitsbaum nicht, also darf checkout sie auch nicht liegen lassen.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
