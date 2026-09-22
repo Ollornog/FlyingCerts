@@ -138,4 +138,50 @@ treffer = hygiene.pruefe_ausfuehrbar(ROOT, ["scripts/check.sh", "scripts/_residu
 assert not treffer, f"nicht ausfuehrbar: {treffer}"
 print("  scripts/check.sh ausfuehrbar")
 
+# ---------- Was das Kit noch mitbringt und hier bis 2026-09-22 ungenutzt lag ----------
+# Nachgezählt beim Bau des Aufruf-Waechters (repokit 0.13.0): von 17 ausgelieferten
+# Pruefungen rief dieses Repo 10. Die fehlenden sieben waren kein Verzicht, sondern
+# nie nachgezogen — und nichts hat es gemerkt.
+
+# Erlaubt sind neben den neutralen Beispieladressen nur: die Badge-Quelle, die
+# Pflicht-Attribution des Logos (Flaticon-Lizenz) und die ACME-Verzeichnisse von
+# Let's Encrypt — letztere sind die Funktion dieses Programms, nicht eine
+# Erwaehnung: ein ACME-Client ohne Verzeichnis-URL ist keiner. Sie sind zudem
+# oeffentliche Infrastruktur und verraten nichts ueber das eigene Netz.
+treffer = hygiene.pruefe_adressen(ROOT, FILES, POLICY,
+                                  zusaetzliche_hosts=[r"img\.shields\.io",
+                                                      r"(www\.)?flaticon\.com",
+                                                      r"acme(-staging)?-v02\.api\.letsencrypt\.org"])
+assert not treffer, f"nicht-neutrale Adresse in Doku/Code: {treffer}"
+print("  nur neutrale Beispieladressen")
+
+treffer = hygiene.pruefe_run_all_sammelt_automatisch(ROOT)
+assert not treffer, f"run_all.py: {treffer}"
+print("  run_all.py findet die Suiten automatisch")
+
+# Der Schaden ist gemessen: paperlaiss verlor am 2026-09-21 vier main-Laeufe in
+# 33 Sekunden. An einem abgebrochenen main-Lauf haengt hinterher kein Abbild.
+treffer = hygiene.pruefe_kein_abbruch_auf_default_branch(ROOT, FILES)
+assert not treffer, f"cancel-in-progress auf main: {treffer}"
+print("  kein unbedingtes cancel-in-progress auf main")
+
+# ---------- Der Waechter ueber den Waechtern ----------
+# Er meldet jede Kit-Pruefung, die ausgeliefert, aber nicht gerufen wird. Die vier
+# Ausnahmen unten sind die Python-Annahmen des Kits — dies ist ein Go-Repo. Sie
+# stehen hier MIT Grund, damit aus "passt hier nicht" kein stilles Weglassen wird.
+treffer = hygiene.pruefe_kit_prueffunktionen_gerufen(ROOT, ausgenommen={
+    "pruefe_python_matrix":
+        "Go-Repo: ci.yml nutzt go-version-file, es gibt keine Python-Matrix",
+    "pruefe_requires_python":
+        "Go-Repo: kein pyproject.toml, in dem requires-python stehen koennte",
+    "pruefe_python_matrix_regel":
+        "ohne eigene Python-Matrix traegt dieses Repo die Rolling-Entscheidung nicht mit",
+    "pruefe_versionsgleichstand":
+        "die Version steht in internal/version/version.go, nicht in pyproject.toml — "
+        "der Gleichstand gegen den CHANGELOG wird oben in dieser Datei selbst geprueft",
+})
+assert not treffer, f"Kit-Pruefung ungerufen: {treffer}"
+print("  jede Kit-Pruefung wird gerufen oder ist begruendet ausgenommen")
+
+
 print("\n\033[32m✓ Repo-Hygiene gruen\033[0m")
