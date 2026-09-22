@@ -122,7 +122,8 @@
     "^[a-z0-9_.-]*(?:/[a-z0-9_.-]*)+$",
     "^[A-Za-z]+(?:-[A-Za-z]+)+$",
     "^(?:changeme|change_me|example|beispiel|dummy|placeholder|redacted|geheim|your|dein)[a-z0-9_.-]*$",
-    "^ssh-(?:ed25519|rsa|dss)"
+    "^ssh-(?:ed25519|rsa|dss)",
+    "^[A-Z][A-Za-z0-9]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+$"
   ],
   "_geheimnis_platzhalter_bedeutung": [
     "NUR Grossbuchstaben/Ziffern/Unterstrich = Platzhaltername (REPLACE_ME_TOKEN)",
@@ -131,7 +132,13 @@
     "Dateipfad statt Wert (SECRETS=scripts/secret-patterns.txt) — nur Kleinbuchstaben, mit Schraegstrich; ein Base64-Geheimnis mit '/' traegt immer Grossbuchstaben",
     "Wortkette mit Bindestrich und OHNE Ziffer (key=value-Extra-Vars aus einem Docstring) — kein Aussteller vergibt Geheimnisse dieser Form",
     "ausgeschriebener Platzhalter",
-    "oeffentlicher SSH-Schluessel — ein Public Key ist kein Geheimnis"
+    "oeffentlicher SSH-Schluessel — ein Public Key ist kein Geheimnis",
+    "Die letzte Regel (seit 2026-09-22) deckt Attribut-/Enum-Ketten mit Grossbuchstaben",
+    "am Anfang ab: `ResidentKeyRequirement.PREFERRED` als Schluesselwort-Argument",
+    "`resident_key=` wurde als Geheimnis gemeldet — das Zuweisungsmuster greift bei",
+    "`_key=`, und die bestehende Punkt-Regel war auf Kleinbuchstaben beschraenkt.",
+    "Sie ist eng genug: ein JWT beginnt mit `ey`, Base64 kennt keinen Punkt, und jedes",
+    "Segment muss mit einem Buchstaben beginnen. Gemeldet von der TinySesam-Session."
   ],
   "artefakt_teile": [
     ".egg-info",

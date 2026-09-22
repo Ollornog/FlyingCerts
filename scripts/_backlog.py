@@ -74,8 +74,14 @@ def cmd_index(args) -> int:
     zeilen = [
         "# Backlog",
         "",
-        "<!-- GENERIERT von scripts/_backlog.py — nicht von Hand pflegen. Neu bauen: "
-        "`python3 scripts/_backlog.py index` -->",
+        # Klammern sind PFLICHT, nicht Geschmack: ohne sie liest CodeQL die beiden
+        # Zeilen als zwei Listeneinträge mit vergessenem Komma
+        # (py/implicit-string-concatenation-in-list) und haengt jedem PR einen
+        # Review-Thread an. In TinySesam #53 war der Alert schon behoben — und kam
+        # mit dem naechsten `repokit sync` zurueck, weil das Kit die alte Fassung
+        # ueberschrieb. Ein Fix, der nur im Zielrepo lebt, haelt einen Sync nicht aus.
+        ("<!-- GENERIERT von scripts/_backlog.py — nicht von Hand pflegen. Neu bauen: "
+         "`python3 scripts/_backlog.py index` -->"),
         "",
         "Die Wahrheit sind die Einzeldateien in diesem Verzeichnis; diese Seite ist ihr Abzug.",
         "Konventionen: [README-KONVENTION.md](README-KONVENTION.md).",
