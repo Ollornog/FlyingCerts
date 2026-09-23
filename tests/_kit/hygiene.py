@@ -334,6 +334,19 @@ def grep_ausnahmen(policy: dict) -> list[str]:
     return aus
 
 
+def _ist_generiert(rel: str, policy: dict) -> bool:
+    """Schreibt ein WERKZEUG diese Datei? — dann sind fremde Adressen darin unvermeidlich.
+
+    Lock-Dateien und IDE-Helfer tragen Adressen Dritter (packagist.org, tools.ietf.org …).
+    Wer sie "neutral macht", bricht die Datei. Gemessen 2026-09-23: ~1400 Adress-Treffer in
+    einem PHP-Repo, fast alle aus `composer.lock` und `_ide_helper.php`.
+
+    ⚠️ Gilt NUR fuer Adressen. `pruefe_geheimnisse` nimmt diese Dateien ausdruecklich NICHT
+    aus: ein Token in einer Lock-Datei ist trotzdem ein Token — und dort schaut niemand hin.
+    """
+    return any(re.search(m, rel) for m in policy.get("generierte_dateien", []))
+
+
 def pruefe_adressen(root: str, dateien: list[str], policy: dict,
                     zusaetzliche_hosts: list[str] | None = None) -> list[str]:
     """Nur neutrale Beispieladressen (RFC 2606) in Doku und Code."""
@@ -342,6 +355,8 @@ def pruefe_adressen(root: str, dateien: list[str], policy: dict,
     url = re.compile(r"https?://([a-z0-9.-]+)", re.IGNORECASE)
     treffer = []
     for rel, inhalt in _texte(root, dateien, policy):
+        if _ist_generiert(rel, policy):
+            continue
         for host in url.findall(inhalt):
             # Regex-Literale im Frontend enthalten "https?://" ohne echten Host.
             if "." not in host or not re.search(r"[a-z]", host, re.IGNORECASE):
@@ -984,14 +999,22 @@ def pruefe_dateiliste_plausibel(dateien: list[str], mindestens: int = 5,
         return treffer
 
     try:
-        lauf = subprocess.run(["git", "-C", root, "ls-tree", "-r", "--name-only", "HEAD"],
+        # `-z` UND `core.quotePath=false` sind beide noetig, nicht eines von beiden:
+        # ohne sie escaped git Nicht-ASCII OKTAL und setzt Anfuehrungszeichen — eine Datei
+        # `Änderungen.pdf` kommt dann als `"\303\204nderungen.pdf"` zurueck. Die Aufrufstelle
+        # liest ihre Liste mit `ls-files -z` und bekommt den Umlaut richtig; verglichen wurden
+        # damit zwei verschieden KODIERTE Fassungen desselben Pfads, und die Pruefung meldete
+        # eine vorhandene Datei als fehlend (gemessen 2026-09-23 an einem Repo mit Umlaut-PDF).
+        # `-z` allein genuegt nicht — quotePath wirkt unabhaengig davon.
+        lauf = subprocess.run(["git", "-C", root, "-c", "core.quotePath=false",
+                               "ls-tree", "-r", "-z", "--name-only", "HEAD"],
                               capture_output=True, text=True, check=False)
     except OSError:
         return treffer
     if lauf.returncode != 0:
         return treffer
 
-    im_baum = {z for z in lauf.stdout.splitlines() if z.strip()}
+    im_baum = {z for z in lauf.stdout.split("\0") if z.strip()}
     fehlend = sorted(im_baum - set(dateien))
     if fehlend:
         treffer.append(f"{len(fehlend)} von {len(im_baum)} Dateien fehlen in der "
@@ -1164,6 +1187,8 @@ def pruefe_blanke_adressen(root: str, dateien: list[str], policy: dict,
 
     treffer = []
     for rel, inhalt in _texte(root, dateien, policy):
+        if _ist_generiert(rel, policy):
+            continue
         for host in sorted(_host_kandidaten(inhalt, rel.endswith(".py"))):
             klein = host.lower()
             if klein in gesegnet or erlaubt.search(host):
