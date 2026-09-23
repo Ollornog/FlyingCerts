@@ -92,7 +92,8 @@ def pruefe_artefakte(dateien: list[str], policy: dict) -> list[str]:
 
 
 def pruefe_private_infrastruktur(root: str, dateien: list[str], policy: dict,
-                                 projekte: list[str]) -> list[str]:
+                                 projekte: list[str],
+                                 eigener_name_sha256: str | list[str] | None = None) -> list[str]:
     """Keine private Infrastruktur im öffentlichen Repo.
 
     Die Trennlinie ist **Identität gegen Infrastruktur**, nicht „mein Name kommt vor".
@@ -100,9 +101,29 @@ def pruefe_private_infrastruktur(root: str, dateien: list[str], policy: dict,
     Projektname. Verboten ist, was jemandem hilft, die Systeme dahinter zu finden.
 
     `projekte` sind die eigenen Projektnamen, deren Repo-URLs erlaubt bleiben.
+
+    `eigener_name_sha256` nimmt den EIGENEN Namen eines Repos aus der Namensliste —
+    als Prüfsumme, nicht als Klartext, damit die Aufrufstelle den Namen nicht trägt.
+
+    WARUM ES DAS BRAUCHT (2026-09-22): Steht der Name eines Projekts selbst auf der
+    Liste der geschützten Namen, meldet die Prüfung IN DESSEN EIGENEM REPO jeden
+    Vorkommensort — Projektname, Datenbankname, Klassennamen, Abbildname. Gemessen:
+    **1605 Befunde** in einem Repo, jeder einzelne formal richtig und trotzdem wertlos.
+
+    Beide Sichtweisen stimmen, und genau das ist der Punkt: Von aussen ist der Name
+    **Kundenname** und gehört in kein fremdes Repo. Von innen ist er der **Projektname**
+    und steht zu Recht überall. `erlaubte_identitaet` löst das nicht — sie erlaubt ihn
+    nur in Repo-URLs, nicht in `DB_DATABASE=<name>`.
+
+    Die Ausnahme gilt bewusst nur für den EINEN eigenen Namen. Alle anderen geschützten
+    Namen bleiben auch hier verboten: ein Kundenprojekt darf seinen eigenen Namen nennen,
+    aber nicht den des nächsten Kunden.
     """
     muster = [re.compile(m, re.IGNORECASE) for m in policy["private_muster"]]
-    namen = frozenset(policy["private_namen_sha256_16"])
+    eigen = eigener_name_sha256 or []
+    if isinstance(eigen, str):
+        eigen = [eigen]
+    namen = frozenset(policy["private_namen_sha256_16"]) - {h.lower() for h in eigen}
     erlaubt = re.compile(
         policy["erlaubte_identitaet"].format(projekte="|".join(re.escape(p) for p in projekte)),
         re.IGNORECASE)
@@ -152,6 +173,29 @@ def ist_platzhalter(wert: str, platzhalter: list) -> bool:
     return any(p.match(wert) for p in platzhalter)
 
 
+def _wert_ist_aufruf(zeile: str, treffer) -> bool:
+    """Steht rechts ein AUFRUF statt eines Literals? — dann wird der Wert zur Laufzeit erzeugt.
+
+    WARUM (2026-09-22, an einem PHP-Repo gemessen):
+
+        $token = DefectReporterContact::generateStatusToken();
+
+    Hier steht kein Geheimnis, sondern ein **Klassenname** vor einem statischen Aufruf —
+    lang genug, um das Zuweisungsmuster auszuloesen. Gleiche Familie wie der Enum-Fall.
+
+    ⚠️ Bewusst ueber den KONTEXT geloest, nicht ueber eine Platzhalter-Regel. Der erste
+    Versuch war `^[A-Za-z_][A-Za-z0-9_]*$` als Platzhalter — und liess prompt JWT, Passwort
+    und ein Zeichen-Gemisch durch, weil eine Regel, die nur den WERT sieht, einen Bezeichner
+    nicht von einem Geheimnis ohne Sonderzeichen unterscheiden kann. Die Negativtests haben
+    das gefangen; ohne sie waere ein Loch in den Geheimnis-Zaun gerissen worden.
+
+    Entscheidend ist, was dem Wert FOLGT: `::`, `->` oder `(` sind Code, nie Teil eines
+    abgelegten Geheimnisses.
+    """
+    rest = zeile[treffer.end("wert"):treffer.end("wert") + 4]
+    return rest.startswith(("::", "->", "(", "()"))
+
+
 def geheimnis_zeilen(inhalt: str, policy: dict) -> list[tuple[int, str]]:
     """(Zeilennummer, Art) je verdaechtiger Zeile. **Nie der Wert.**
 
@@ -169,7 +213,8 @@ def geheimnis_zeilen(inhalt: str, policy: dict) -> list[tuple[int, str]]:
                 break
         else:
             m = zuweisung.search(zeile)
-            if m and not ist_platzhalter(m.group("wert"), platzhalter):
+            if m and not ist_platzhalter(m.group("wert"), platzhalter) \
+                  and not _wert_ist_aufruf(zeile, m):
                 treffer.append((n, "Zuweisung"))
     return treffer
 
