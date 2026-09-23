@@ -151,7 +151,8 @@
     "`resident_key=` wurde als Geheimnis gemeldet — das Zuweisungsmuster greift bei",
     "`_key=`, und die bestehende Punkt-Regel war auf Kleinbuchstaben beschraenkt.",
     "Sie ist eng genug: ein JWT beginnt mit `ey`, Base64 kennt keinen Punkt, und jedes",
-    "Segment muss mit einem Buchstaben beginnen. Gemeldet von der TinySesam-Session."
+    "Segment muss mit einem Buchstaben beginnen. Gemeldet von der TinySesam-Session.",
+    "einem statischen Aufruf, z.B. `$token = LangerKlassenName::erzeuge();`. Der Wert wird zur"
   ],
   "artefakt_teile": [
     ".egg-info",
