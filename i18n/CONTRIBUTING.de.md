@@ -26,6 +26,30 @@ Neben den Go-Tests erzwingt die Suite Repo-Hygiene: Pflichtdateien, per SHA gepi
 Workflow-Berechtigungen, Changelog-Struktur und dass die deutschen und englischen Dokumente dieselbe
 Gestalt behalten. Schlägt die Hygiene an, behebe die Ursache — arbeite nicht am Check vorbei.
 
+## Der Doku-Schnellpfad
+
+Eine Änderung, die **ausschließlich** Doku berührt, braucht weder die Go-Toolchain noch die
+Test-CA. Die CI lässt beides weg und fährt stattdessen die Hygiene — zweimal, denn die
+Wiederholbarkeit gilt auf jedem Pfad:
+
+```bash
+scripts/check.sh --nur-hygiene      # ~0,3 s statt ~50 s
+```
+
+Entschieden wird in `scripts/_nur_doku.sh`, dort steht zu jeder Grenze der Grund: `*.md` überall,
+`docs/`, `i18n/`, `backlog/`, `LICENSE` gelten als Doku; alles andere bedeutet volle Suite, auch
+`go.mod`, `examples/` und die Workflows selbst.
+
+Zwei Dinge sind Absicht. **Die Hygiene fällt nie weg**: eine Dienst-Subdomain, ein Heimatpfad oder
+ein Kundenname in einer README ist derselbe Verstoß wie einer im Code — Doku darf den kurzen Weg
+nehmen, *weil* die Hygiene mitfährt, nicht weil Doku harmlos wäre. Und **im Zweifel läuft die volle
+Suite**: leerer Diff, fehlender Basis-Commit, flacher Klon, Force-Push, manueller
+`workflow_dispatch` — alles ergibt „nicht nur Doku".
+
+Die Entscheidung sitzt auf **Schritt**-Bedingungen innerhalb des bestehenden Jobs, nie auf
+`paths-ignore`. Ein per Pfadfilter unterdrückter Workflow legt seinen Check gar nicht an — er
+bleibt auf `Pending` stehen und blockiert den Pull Request dauerhaft.
+
 ## Sicherheitsrelevante Änderungen
 
 Alles, was Schlüsselbehandlung, Authentifizierung, Autorisierung oder die Aufzeichnung berührt,

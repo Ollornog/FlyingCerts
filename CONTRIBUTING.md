@@ -26,6 +26,29 @@ Besides the Go tests, the suite enforces repository hygiene: required files, pin
 workflow permissions, changelog structure, and that the German and English documents keep the same
 shape. If hygiene fails, fix the cause — do not work around the check.
 
+## The documentation fast path
+
+A change that touches **only** documentation does not need the Go toolchain or the test CA. The
+CI leaves them out and runs hygiene instead — twice, because repeatability holds on every path:
+
+```bash
+scripts/check.sh --nur-hygiene      # ~0.3 s instead of ~50 s
+```
+
+`scripts/_nur_doku.sh` decides and names a reason for every boundary: `*.md` anywhere, `docs/`,
+`i18n/`, `backlog/`, `LICENSE` count as documentation; everything else — including `go.mod`,
+`examples/` and the workflows themselves — means the full suite.
+
+Two things are deliberate. **Hygiene never gets skipped**: a service subdomain, a home directory
+path or a customer name in a README is the same violation as one in code, so documentation may
+take the short route *because* hygiene comes along, not because documentation is harmless. And
+**when in doubt the full suite runs**: an empty diff, a missing base commit, a shallow clone, a
+force push or a manual `workflow_dispatch` all resolve to "not only documentation".
+
+The decision sits on **step** conditions inside the existing job, never on `paths-ignore`. A
+workflow suppressed by a path filter never creates its check at all — it stays `Pending` and
+blocks the pull request forever.
+
 ## Security-relevant changes
 
 Anything touching key handling, authentication, authorisation or the audit trail needs a test that
