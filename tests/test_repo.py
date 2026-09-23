@@ -245,6 +245,14 @@ treffer = hygiene.pruefe_keine_fremdressourcen(ROOT, FILES, POLICY)
 assert not treffer, f"laedt von Dritten: {treffer}"
 print("  nichts wird von Dritten nachgeladen")
 
+# ---- Wird jede Testdatei ueberhaupt gerufen? (Kit 0.21.0)
+# Von AUSSEN gefragt: ein nicht verkabelter Hygiene-Test besteht seine eigene
+# Aufruf-Pruefung dadurch, dass er schweigt. Autodiscovery (run_all+glob, pytest)
+# erkennt die Pruefung und schweigt dann.
+treffer = hygiene.pruefe_testdateien_gerufen(ROOT)
+assert not treffer, f"Testdatei laeuft nirgends mit: {treffer}"
+print("  jede Testdatei wird von einem Laeufer gerufen")
+
 treffer = hygiene.pruefe_kit_prueffunktionen_gerufen(ROOT, ausgenommen={
     "pruefe_python_matrix":
         "Go-Repo: ci.yml nutzt go-version-file, es gibt keine Python-Matrix",
