@@ -237,6 +237,14 @@ treffer = hygiene.pruefe_policy_schluessel_gelesen(POLICY)
 assert not treffer, f"toter Policy-Schluessel: {treffer}"
 print("  jeder Policy-Schluessel wird gelesen")
 
+# ---- Nichts wird von Dritten nachgeladen (Kit 0.18.0, PO-Regel 2026-09-23)
+# Die Trennlinie: ein Link ist eine Tuer, ein `src` ist ein Bote, den wir ungefragt
+# losschicken. Die Ausnahmeliste ist LEER und soll es bleiben — eine Freigabe fuer eine
+# Stelle, die man beseitigen koennte, waere keine Ausnahme, sondern eine Billigung.
+treffer = hygiene.pruefe_keine_fremdressourcen(ROOT, FILES, POLICY)
+assert not treffer, f"laedt von Dritten: {treffer}"
+print("  nichts wird von Dritten nachgeladen")
+
 treffer = hygiene.pruefe_kit_prueffunktionen_gerufen(ROOT, ausgenommen={
     "pruefe_python_matrix":
         "Go-Repo: ci.yml nutzt go-version-file, es gibt keine Python-Matrix",
