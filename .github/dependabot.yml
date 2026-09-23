@@ -6,9 +6,25 @@ updates:
       interval: monthly
     commit-message:
       prefix: "ci"
+    groups:
+      # Patch und Minor zusammen in EINEN PR. Majors bleiben absichtlich draußen und kommen
+      # einzeln: ein Major kann die Laufzeit wechseln (node20 -> node24) oder Eingaben
+      # entfernen, das gehört einzeln angesehen. Ein Patch-Bump mit gepinntem SHA und
+      # grüner Suite gehört es nicht.
+      klein:
+        patterns: ["*"]
+        update-types: ["patch", "minor"]
   - package-ecosystem: gomod
     directory: /
     schedule:
       interval: monthly
     commit-message:
       prefix: "deps"
+    groups:
+      # Patch und Minor zusammen in EINEN PR. Majors bleiben absichtlich draußen und kommen
+      # einzeln: ein Major kann die Laufzeit wechseln (node20 -> node24) oder Eingaben
+      # entfernen, das gehört einzeln angesehen. Ein Patch-Bump mit gepinntem SHA und
+      # grüner Suite gehört es nicht.
+      klein:
+        patterns: ["*"]
+        update-types: ["patch", "minor"]
