@@ -19,7 +19,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _kit import backlog, hygiene  # noqa: E402
+from _kit import backlog, hygiene, manifest  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 POLICY = hygiene.lade_policy()
@@ -209,6 +209,34 @@ print("  kein unbedingtes cancel-in-progress auf main")
 # Er meldet jede Kit-Pruefung, die ausgeliefert, aber nicht gerufen wird. Die vier
 # Ausnahmen unten sind die Python-Annahmen des Kits — dies ist ein Go-Repo. Sie
 # stehen hier MIT Grund, damit aus "passt hier nicht" kein stilles Weglassen wird.
+# ---- Weicht die Kit-Kopie vom Manifest ab? (Kit 0.11.0)
+# DER FALL, DER DEN AUFRUF-WAECHTER AUSGELOEST HAT: Dieses Repo trug `manifest.py` samt
+# Manifest im Baum und rief die Pruefung NULL mal — die Drift-Erkennung war ausgeliefert
+# und stillgelegt. Bemerkt wurde es nicht von einem Menschen, sondern erst, als der
+# Waechter ueber Modulgrenzen hinweg sehen konnte (Kit 0.17.0): seine Soll-Liste kam aus
+# einer Introspektion ueber das eigene Modul, gefiltert auf den Praefix `pruefe_`, und
+# `manifest.pruefe` hat weder das eine noch das andere.
+treffer = manifest.pruefe(ROOT)
+assert not treffer, f"tests/_kit weicht vom Manifest ab (sonst: repokit sync .): {treffer}"
+print(f"  tests/_kit unveraendert (Kit {manifest.version(ROOT)})")
+
+# ---- Die Ausnahmen und die Policy selbst werden geprueft (Kit 0.17.x)
+# Beide gegen dieselbe Falle: eine Ausnahme oder ein Vorgabewert, den niemand ansieht,
+# verdeckt irgendwann den naechsten echten Befund. `belegstellen` ist hier leer — dieses
+# Repo hat kein Zitatverzeichnis; der Aufruf steht trotzdem, damit ein spaeterer Eintrag
+# geprueft wird, statt still zu gelten.
+treffer = hygiene.pruefe_belegstellen_eng(ROOT, FILES, [])
+assert not treffer, f"Belegstellen-Muster trifft Code: {treffer}"
+print("  Belegstellen-Muster treffen keinen Code")
+
+treffer = hygiene.pruefe_tabelle_vollstaendig()
+assert not treffer, f"Kit-Pruefung in keiner Liste: {treffer}"
+print("  jede Kit-Pruefung steht in genau einer Liste")
+
+treffer = hygiene.pruefe_policy_schluessel_gelesen(POLICY)
+assert not treffer, f"toter Policy-Schluessel: {treffer}"
+print("  jeder Policy-Schluessel wird gelesen")
+
 treffer = hygiene.pruefe_kit_prueffunktionen_gerufen(ROOT, ausgenommen={
     "pruefe_python_matrix":
         "Go-Repo: ci.yml nutzt go-version-file, es gibt keine Python-Matrix",

@@ -9,7 +9,6 @@
   "version": 2,
   "private_muster": [
     "(?<![\\w.])/home/[a-z_][a-z0-9_-]*",
-    "(?<![\\w.-])(?!www\\.)(?:[a-z0-9-]+\\.)+(?!example\\b)[a-z0-9-]{3,}\\.(?:de|at|ch|eu)\\b",
     "\\b10\\.\\d+\\.\\d+\\.\\d+(?!/)",
     "\\b192\\.168\\.\\d+\\.\\d+(?!/)",
     "\\b172\\.(?:1[6-9]|2\\d|3[01])\\.\\d+\\.\\d+(?!/)",
@@ -33,7 +32,11 @@
     "Kern des Produkts wurde als Leck gemeldet.",
     "Dabei bewusst ueber den Vorschlag hinausgegangen: nur `\\b(?!www\\.)` liesse `mail.www.<x>.de`",
     "durch, weil die Suche dann an einer spaeteren Bezeichnung ansetzt. Deshalb Anker auf den",
-    "ANFANG des Hostnamens `(?<![\\w.-])` plus mehrteiliger Rumpf `(?:[a-z0-9-]+\\.)+`."
+    "ANFANG des Hostnamens `(?<![\\w.-])` plus mehrteiliger Rumpf `(?:[a-z0-9-]+\\.)+`.",
+    "2026-09-23: Das Subdomain-Muster ist ERSATZLOS entfallen. Es fragte 'ist da eine",
+    "dreiteilige Domain?' und traf damit jede fremde Website; der www-Behelf davor war nur",
+    "das Symptom. Seine Aufgabe uebernimmt der Domain-Anker (eigene_domains_sha256_16) in",
+    "pruefe_private_infrastruktur — praezise statt nachgeschaerft."
   ],
   "_namen_kommentar": [
     "Der GitHub-Owner steht hier BEWUSST NICHT. Er ist Identitaet, nicht Infrastruktur:",
@@ -241,5 +244,31 @@
     "und genau dort schaut niemand hin. Die Ausnahme gilt fuer ADRESSEN, nicht fuer Werte.",
     "Anlass 2026-09-23: ~1400 Adress-Treffer in einem PHP-Repo, fast alle aus composer.lock",
     "und _ide_helper.php (packagist.org, tidelift.com, tools.ietf.org)."
+  ],
+  "eigene_domains_sha256_16": [
+    "025f7033bf9fa53b",
+    "1e042f04295e74bc",
+    "3a06e0b732af4a2e",
+    "41b8e6744905305f",
+    "cb034381b0eee532"
+  ],
+  "_eigene_domains_bedeutung": [
+    "Die Domains, die UNS gehoeren — als Pruefsumme des registrierbaren Namens ohne TLD.",
+    "Sie sind die Antwort auf die richtige Frage. Das Subdomain-Muster fragte bis 2026-09-23",
+    "'ist da eine dreiteilige Domain?' und traf damit jede fremde Website. Die Frage muss",
+    "lauten: 'liegt es unter EINER UNSERER Domains?' — nur dann ist eine Subdomain ein",
+    "Ausschnitt unserer Karte. 'publikationen.<fremde>.de' ist eine Quellenangabe,",
+    "'paperless.<unsere>.de' verraet einen Dienst.",
+    "GEMESSEN: In einem Kundenrepo mit Normen-Regelkatalog erzeugte das alte Muster 135",
+    "Fehlalarme (Fundstellen von Normen, Gesetzen, Herstellern) und fand einen echten Befund.",
+    "Der www-Behelf aus 0.16.0 wird damit UEBERFLUESSIG: 'www.<fremde>.de' geht nicht durch,",
+    "weil 'www' davorsteht, sondern weil die Domain nicht uns gehoert.",
+    "⚠️ WICHTIG, warum das NICHT die erlaubte_hosts-Falle wiederholt: Wir tragen die eigene",
+    "Domain nicht in eine ERLAUBNIS-Liste ein, sondern verengen den DETEKTOR darauf. Eine",
+    "Subdomain unter einer eigenen Domain schlaegt weiter an — genau das ist der Zweck.",
+    "Quelle der Liste: die Caddyfile des Edge-Proxy (alle Fassungen samt Backups) plus die",
+    "Pages-/Homepage-Angaben der Repos. Wer eine Domain hinzufuegt, verengt den Detektor um",
+    "eine Stelle — also nur belegte Domains, keine geratenen.",
+    "'meinedomain' ist die Fixture der Kit-Eigentests, keine echte Domain."
   ]
 }
