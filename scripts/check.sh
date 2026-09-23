@@ -58,7 +58,17 @@ PY="$(command -v python3 || true)"
 
 # ---------- Rueckstaende ----------
 step "Rueckstands-Check"
-scripts/_residue_check.sh check || fail "Rueckstands-Check"
+# Exit 2 = NICHT ENTSCHEIDBAR (Kit 0.20.1): der Baum war schon vor dem Lauf veraendert und
+# es gibt keinen Vorher-Stand. Das muss ein skip sein, kein fail — in der CI und unter
+# ci-local tritt der Fall nie auf (Baum dort per Konstruktion sauber), beim Lauf von Hand
+# ist er der Normalfall. Ein Fehlalarm, den man wegklickt, hat den Waechter abgeschaltet.
+rc_residue=0
+scripts/_residue_check.sh check || rc_residue=$?
+case "$rc_residue" in
+    0) : ;;
+    2) printf '\033[33m! Rueckstand nicht entscheidbar (Arbeitsbaum war vorher veraendert)\033[0m\n' ;;
+    *) fail "Rueckstands-Check" ;;
+esac
 
 if [[ $FAST -eq 1 ]]; then
     printf '\n\033[33m! --fast: Race-Detektor uebersprungen. Vor dem Push einmal ohne --fast laufen lassen.\033[0m\n'
