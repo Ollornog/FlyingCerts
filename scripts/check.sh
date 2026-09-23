@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Das Tor vor jedem Push: Go-Tests + Repo-Hygiene + Rueckstands-Check.
 #
-#   scripts/check.sh           # alles
-#   scripts/check.sh --fast    # ohne die langsamen Go-Tests (nur wenn es wirklich eilt)
+#   scripts/check.sh                # alles
+#   scripts/check.sh --fast         # ohne die langsamen Go-Tests (nur wenn es wirklich eilt)
+#   scripts/check.sh --nur-hygiene  # Doku-Schnellpfad: OHNE Go, mit vollstaendiger Hygiene
 #
 # Der pre-push-Hook (.githooks/pre-push) ruft dieses Skript. Einmalig pro Klon:
 #   git config core.hooksPath .githooks
@@ -13,7 +14,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 FAST=0
-[[ "${1:-}" == "--fast" ]] && FAST=1
+NUR_HYGIENE=0
+case "${1:-}" in
+    --fast)        FAST=1 ;;
+    --nur-hygiene) NUR_HYGIENE=1 ;;
+esac
 
 step() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
 fail() { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
@@ -22,7 +27,17 @@ fail() { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 # Go-Quellen ohne Go-Toolchain sind ein Fehler, kein Grund zum Ueberspringen: sonst meldet
 # der Hook "gruen", ohne eine Zeile Code geprueft zu haben.
 mapfile -t GO_DATEIEN < <(git ls-files '*.go' 2>/dev/null || true)
-if [[ ${#GO_DATEIEN[@]} -gt 0 ]]; then
+if [[ $NUR_HYGIENE -eq 1 ]]; then
+    # ── Doku-Schnellpfad ──────────────────────────────────────────────────────
+    # Beruehrt der Aenderungssatz nur Doku, faellt Go weg: Toolchain, gofmt,
+    # go vet und `go test -race` pruefen nichts an einer Zeile Prosa. Die
+    # Hygiene faellt NICHT weg — eine Dienst-Subdomain, ein Heimatpfad oder ein
+    # Kundenname in einer README ist derselbe Verstoss wie einer im Code.
+    # Wer den Umfang bestimmt: scripts/_nur_doku.sh (dort auch, warum go.mod
+    # KEINE Doku ist). Im Zweifel laeuft die volle Suite.
+    step "Doku-Schnellpfad — Go faellt weg, Hygiene nicht"
+    echo "  ${#GO_DATEIEN[@]} Go-Dateien im Repo, keine davon geprueft"
+elif [[ ${#GO_DATEIEN[@]} -gt 0 ]]; then
     command -v go >/dev/null || fail "Go-Quellen vorhanden, aber keine Go-Toolchain im PATH"
 
     step "gofmt — Formatierung"
@@ -72,5 +87,9 @@ esac
 
 if [[ $FAST -eq 1 ]]; then
     printf '\n\033[33m! --fast: Race-Detektor uebersprungen. Vor dem Push einmal ohne --fast laufen lassen.\033[0m\n'
+fi
+if [[ $NUR_HYGIENE -eq 1 ]]; then
+    printf '\n\033[32m✓ Hygiene gruen (Doku-Schnellpfad, Go nicht geprueft)\033[0m\n'
+    exit 0
 fi
 printf '\n\033[32m✓ alles gruen\033[0m\n'

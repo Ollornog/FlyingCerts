@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A fast path for documentation-only changes in CI. When a push or pull request
+  touches **only** documentation (`*.md`, `docs/`, `i18n/`, `backlog/`,
+  `LICENSE`), the workflow leaves out the Go toolchain, the Pebble test CA,
+  `go vet` and `go test -race`, and runs `scripts/check.sh --nur-hygiene`
+  instead — twice, because repeatability holds on every path. Measured, a
+  documentation run drops from 47–63 s to about 10 s.
+
+  **Hygiene is never skipped, and that is the point.** A service subdomain, a
+  home directory path or a customer name in a README is the same violation as
+  one in code; the name and address blocklist, the secret patterns, the
+  translation-shape check and the residue check all still run. Documentation
+  may take the short route *because* hygiene comes along, not because
+  documentation is harmless.
+
+  `scripts/_nur_doku.sh` decides and gives a reason for every boundary;
+  `tests/test_doku_schnellpfad.py` holds them. **When in doubt the full suite
+  runs:** an empty diff, a zero SHA on a branch's first push, an unknown base
+  commit, a force push, or `workflow_dispatch` without a base. `go.mod`,
+  `examples/` and `.gitattributes` are deliberately *not* documentation — the
+  last one changes *what the test even sees*.
+
+  The conditions sit on **step** level inside the existing job, not as
+  `paths-ignore` on the workflow: a workflow suppressed by a path filter never
+  creates its check, which then stays `Pending` and blocks the pull request
+  forever. The required check here is named `Tests und Hygiene`.
 - Hardened systemd units for both sides in `examples/systemd/`, plus a
   sudoers snippet that lets the agent reload exactly one service instead of
   running as root. The README says what they are for: the agent executes a

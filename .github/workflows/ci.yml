@@ -23,8 +23,47 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          # Volle Historie, weil der Doku-Schnellpfad unten `git diff <basis>..HEAD`
+          # rechnet. Mit der Vorgabe (Tiefe 1) liegt `base.sha` eines PR nicht im Klon,
+          # der Diff scheitert — und das Skript faellt fail-closed auf die volle Suite
+          # zurueck. Der Schnellpfad waere dann nur Zierde.
+          fetch-depth: 0
+
+      # ── Doku-Schnellpfad: beruehrt dieser Aenderungssatz NUR Doku? ────────────
+      #
+      # Die Dateimenge und die Begruendung jeder Grenze stehen in
+      # scripts/_nur_doku.sh; tests/test_doku_schnellpfad.py haelt sie fest.
+      #
+      # WARUM auf SCHRITT-Ebene und nicht per `paths-ignore` am Workflow: Der
+      # Required Check dieses Repos heisst `Tests und Hygiene`. Ein per Pfadfilter
+      # unterdrueckter Workflow legt seine Checks NIE an — sie bleiben auf
+      # "Expected/Pending" stehen und der PR ist dauerhaft nicht mergebar. GitHub
+      # sagt das woertlich: "Associated checks stay in a 'Pending' state and block
+      # merging ... Avoid requiring workflows that can be skipped."
+      # (docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
+      #
+      # Ein per `if:` uebersprungener JOB waere laut derselben Quelle unbedenklich
+      # ("A job that is skipped will report its status as Success. It will not
+      # prevent a pull request from merging, even if it is a required check") —
+      # hier laeuft der Job trotzdem: Er tut im Schnellpfad etwas (die Hygiene),
+      # und ein gruen LAUFENDER Check ist als Gate staerker als ein uebersprungener.
+      - name: Umfang der Aenderung
+        id: umfang
+        env:
+          # Kein `${{ }}` mitten im Skript: der Wert kommt ueber die Umgebung.
+          BASIS: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          nur_doku="$(./scripts/_nur_doku.sh --seit "$BASIS")"
+          echo "nur_doku=$nur_doku" >> "$GITHUB_OUTPUT"
+          if [ "$nur_doku" = "true" ]; then
+            echo "Nur Doku beruehrt — Schnellpfad: Hygiene ja, Go und Test-CA nein." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Code beruehrt (oder Umfang nicht ermittelbar) — volle Suite." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        if: steps.umfang.outputs.nur_doku != 'true'
         with:
           go-version-file: go.mod
           check-latest: true
@@ -39,6 +78,7 @@ jobs:
       # Digest die einzige Moeglichkeit, zweimal dasselbe Abbild zu bekommen —
       # und dieselbe Regel wie bei den Actions weiter oben.
       - name: Test-CA starten (Pebble)
+        if: steps.umfang.outputs.nur_doku != 'true'
         run: |
           docker network create pebble
           docker run -d --name challtestsrv --network pebble \
@@ -58,18 +98,34 @@ jobs:
           curl -sk https://localhost:14000/dir | grep -q renewalInfo
 
       - name: Volle Suite
+        if: steps.umfang.outputs.nur_doku != 'true'
         run: scripts/check.sh
 
       # Die Zusage aus CONTRIBUTING: ein Test, der beim zweiten Lauf rot wird, ist kaputt.
       # Genau das wird hier nachgewiesen, statt es nur zu behaupten.
       - name: Zweiter Lauf — Wiederholbarkeit
+        if: steps.umfang.outputs.nur_doku != 'true'
         run: scripts/check.sh
+
+      # Der Schnellpfad ueberspringt Go, NICHT die Hygiene: Namens- und
+      # Adress-Sperrliste, Geheimnis-Muster, Fremdressourcen-Pruefung,
+      # Versionsgleichstand und Backlog-Pruefungen treffen eine README genauso wie
+      # Code. Auch hier zweimal — die Wiederholbarkeit gilt in jedem Pfad.
+      - name: Hygiene (Doku-Schnellpfad)
+        if: steps.umfang.outputs.nur_doku == 'true'
+        run: scripts/check.sh --nur-hygiene
+
+      - name: Zweiter Lauf — Hygiene
+        if: steps.umfang.outputs.nur_doku == 'true'
+        run: scripts/check.sh --nur-hygiene
 
       # Wenn die Suite kippt, ist die erste Frage, was die Test-CA gesehen hat.
       # Ohne das bleibt nur der Fehlertext des Clients — und der sagte beim
       # ersten v0.1.0-Versuch zwar, WAS Pebble antwortete, aber nicht warum.
       - name: Pebble-Protokoll bei Fehlschlag
-        if: failure()
+        # Im Schnellpfad laeuft keine Test-CA: `docker logs` waere dort ein zweiter
+        # Fehler ueber dem ersten und wuerde die echte Ursache verdecken.
+        if: failure() && steps.umfang.outputs.nur_doku != 'true'
         run: |
           echo "::group::pebble"; docker logs pebble 2>&1 | tail -80; echo "::endgroup::"
           echo "::group::challtestsrv"; docker logs challtestsrv 2>&1 | tail -40; echo "::endgroup::"
