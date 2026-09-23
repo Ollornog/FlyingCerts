@@ -1160,7 +1160,12 @@ def pruefe_testdateien_gerufen(root: str, testverzeichnis: str = "tests",
         return treffer
 
     if laeufer is None:
-        laeufer = ["scripts/check.sh", "scripts/run_all.py", "run_all.py", "Makefile"]
+        # `tox.ini` und `pyproject.toml` dazu: gemeldet von einer Kunden-Session, die
+        # beim Belegen ihres Befunds BEIDE Einstiegspunkte greppen musste (check.sh und
+        # die Workflows). Ein Waechter, der nur check.sh liest, mahnt ein Repo an, das
+        # seine Tests woanders ruft — und ein Fehlalarm schaltet ihn ab.
+        laeufer = ["scripts/check.sh", "scripts/run_all.py", "run_all.py", "Makefile",
+                   "tox.ini", "pyproject.toml", "noxfile.py", "justfile"]
         laeufer += sorted(_glob.glob(os.path.join(root, ".github", "workflows", "*.yml")))
         laeufer += sorted(_glob.glob(os.path.join(root, ".github", "workflows", "*.yaml")))
     quelle = []
@@ -1183,7 +1188,23 @@ def pruefe_testdateien_gerufen(root: str, testverzeichnis: str = "tests",
     dateien = sorted(d for d in _glob.glob(muster)
                      if os.path.isfile(d) and not d.endswith((".pyc", ".orig")))
     if not dateien:
-        return treffer  # kein Testverzeichnis: andere Pruefungen sind dafuer zustaendig
+        # ⚠️ NICHT SCHWEIGEN. Gemeldet von derselben Kunden-Session, die den Anlass-Befund
+        # lieferte — und sie hatte den Fehler am selben Abend im eigenen Werkzeug:
+        #
+        #     „Meiner tat es beim ersten Lauf — er fand null Dateien und meldete gruen."
+        #
+        # Genau das ist die Stufe, gegen die diese Pruefung gebaut ist (M-1 Stufe 3: *hat sie
+        # etwas gesehen?*). Sie darf sie nicht selbst offen lassen: ein Waechter, der keine
+        # Testdateien findet und daraufhin gruen meldet, sieht aus wie ein sauberes Repo.
+        #
+        # Wer legitim keine `tests/test_*` hat (ein reines Doku- oder Datenrepo), traegt eine
+        # Ausnahme mit Grund ein — dann steht es wenigstens da.
+        if "__keine_testdateien__" in ausgenommen:
+            return treffer
+        return treffer + [
+            f"in {testverzeichnis}/ liegt keine einzige `test_*`-Datei — diese Pruefung hat "
+            f"nichts gemessen und waere aus dem falschen Grund gruen. Wenn das Repo bewusst "
+            f"keine hat: ausgenommen={{'__keine_testdateien__': '<Grund>'}}"]
 
     for pfad in dateien:
         name = os.path.basename(pfad)
