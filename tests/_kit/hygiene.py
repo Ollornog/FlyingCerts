@@ -148,6 +148,9 @@ def pruefe_private_infrastruktur(root: str, dateien: list[str], policy: dict,
                     treffer.append(f"{rel}:{n}: verbotener Name")
             for m in unter_eigener.finditer(sauber):
                 eltern = m.group(1).lower()
+                # `www.<eigene>` ist der Alias der Website, kein Dienst.
+                if _ist_eigene_identitaet(m.group(0), policy):
+                    continue
                 if hashlib.sha256(eltern.encode()).hexdigest()[:16] in eigene:
                     treffer.append(f"{rel}:{n}: Dienst-Subdomain unter eigener Domain")
     return treffer
@@ -371,6 +374,52 @@ def _ist_belegstelle(rel: str, belegstellen: list[str] | None) -> bool:
     return any(re.search(m, rel) for m in (belegstellen or []))
 
 
+def _ist_eigene_identitaet(host: str, policy: dict) -> bool:
+    r"""Die NACKTE eigene Domain (und ihr `www`) ist Identitaet, keine Karte.
+
+    WARUM (2026-09-23, gemeldet von der SpecDoor-Session): `eigene_domains_sha256_16` las bis
+    dahin nur `pruefe_private_infrastruktur`. Die Adresspruefungen kannten die Liste nicht und
+    meldeten die eigene Produktdomain als fremden Host — 8 von 96 verbliebenen Treffern in einem
+    Kundenrepo.
+
+    Die beiden Pruefungen brauchen die Liste in ENTGEGENGESETZTER Richtung, und genau das macht
+    sie wertvoll:
+
+    | | eigene Domain | fremde Domain |
+    |---|---|---|
+    | `pruefe_private_infrastruktur` | Subdomain darunter = ROT | egal wie viele Punkte = gruen |
+    | `pruefe_adressen` | nackte Form = GRUEN (Identitaet) | je nach Kontext |
+
+    ⚠️ **Warum NICHT `erlaubte_hosts`:** Diese Liste ist eine Subdomain-Wildcard
+    (`(?:^|\.)…$`) — ein Eintrag dort haette `test.<eigene-domain>` still mitfreigegeben, also
+    genau den Fund, fuer den der Domain-Anker gebaut wurde. Die falsche Tuer, mit demselben
+    Ergebnis wie die alte `erlaubte_hosts`-Verdeckungsfalle.
+
+    **`www` gilt mit, und das ist eine KEHRTWENDE gegenueber 0.17.0**, wo `www.<eigene>` bewusst
+    rot war. Die Begruendung damals: "seit dem Domain-Anker ist `www` genauso eine Subdomain wie
+    jede andere". Das war formal richtig und sachlich falsch. Die Hausregel trennt nicht nach der
+    Form, sondern nach der Sache: erlaubt ist, was zur **Identitaet** gehoert (Autor,
+    Impressums-Mail, Repo-URL, Projektname), verboten ist, was einen **Dienst** verraet. `www` ist
+    kein Dienst, sondern der kanonische Alias der Website selbst — meist ein Redirect auf die
+    nackte Domain, und die steht im Impressum. `paperless.<eigene>` verraet, wo ein Paperless
+    laeuft; `www` verraet nichts, was das Impressum nicht schon sagt.
+
+    (Nicht zu verwechseln mit dem `www`-Behelf aus 0.16.0: der stand fuer FREMDE Domains und
+    existierte nur, weil das Muster Namensteile zaehlte. Der ist mit 0.17.0 entfallen und kommt
+    nicht zurueck. Hier geht es um EIGENE Domains und um die Sache, nicht um die Punktzahl.)
+    """
+    eigene = frozenset(policy.get("eigene_domains_sha256_16", []))
+    if not eigene:
+        return False
+    labels = host.lower().rstrip(".").split(".")
+    if len(labels) < 2:
+        return False
+    if hashlib.sha256(labels[-2].encode()).hexdigest()[:16] not in eigene:
+        return False
+    # Nackt (`domain.tld`) oder genau `www.domain.tld` — jede andere Subdomain ist ein Dienst.
+    return labels[:-2] in ([], ["www"])
+
+
 def pruefe_adressen(root: str, dateien: list[str], policy: dict,
                     zusaetzliche_hosts: list[str] | None = None,
                     belegstellen: list[str] | None = None) -> list[str]:
@@ -385,6 +434,8 @@ def pruefe_adressen(root: str, dateien: list[str], policy: dict,
         for host in url.findall(inhalt):
             # Regex-Literale im Frontend enthalten "https?://" ohne echten Host.
             if "." not in host or not re.search(r"[a-z]", host, re.IGNORECASE):
+                continue
+            if _ist_eigene_identitaet(host, policy):
                 continue
             if not erlaubt.search(host):
                 treffer.append(f"{rel}: {host}")
@@ -1246,6 +1297,8 @@ def pruefe_blanke_adressen(root: str, dateien: list[str], policy: dict,
         for host in sorted(_host_kandidaten(inhalt, rel.endswith(".py"))):
             klein = host.lower()
             if klein in gesegnet or erlaubt.search(host):
+                continue
+            if _ist_eigene_identitaet(host, policy):
                 continue
             # Falle 1: der Treffer ist ein PRAEFIX eines Dateinamens (`login.de.html`).
             if re.search(rf"{re.escape(host)}\.[a-z0-9]{{1,5}}\b", inhalt, re.IGNORECASE):

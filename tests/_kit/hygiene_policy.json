@@ -147,7 +147,7 @@
     "^[a-z_][a-z0-9_]*(?:\\.[a-z_][a-z0-9_]*)+$",
     "^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$",
     "^[a-z0-9_.-]*(?:/[a-z0-9_.-]*)+$",
-    "^[A-Za-z]+(?:-[A-Za-z]+)+$",
+    "^[A-Za-z]+(?:[-/]+[A-Za-z]+)+$",
     "^(?:changeme|change_me|example|beispiel|dummy|placeholder|redacted|geheim|your|dein)[a-z0-9_.-]*$",
     "^ssh-(?:ed25519|rsa|dss)",
     "^[A-Z][A-Za-z0-9]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+$"
@@ -172,7 +172,23 @@
     "Platzhalter-Regel `^[A-Za-z_]\\w*$` — sie liess JWT, Passwort und Zeichen-Gemisch durch,",
     "weil eine Regel, die nur den WERT sieht, einen Bezeichner nicht von einem Geheimnis ohne",
     "Sonderzeichen unterscheiden kann. Merksatz: einen Fehlalarm am Geheimnis-Zaun ueber den",
-    "Kontext abstellen, nie ueber den Wert — sonst macht man den Zaun schwaecher statt genauer."
+    "Kontext abstellen, nie ueber den Wert — sonst macht man den Zaun schwaecher statt genauer.",
+    "",
+    "SCHRAEGSTRICH ALS TRENNER (2026-09-23, gemeldet von der SpecDoor-Session): Das",
+    "Zuweisungsmuster traf deutsche PROSA ueber Schluessel — 'Override-Tabelle (Key =",
+    "Originaltext/-Key, ...)' und 'Keys = TodoQueue/DoorAttention'. Das trifft jedes Repo mit",
+    "deutschsprachiger Doku ueber Keys, Token oder Sitzungen.",
+    "Der gemeldete Vorschlag war, am KONTEXT zu unterscheiden (eine Zuweisung im Code habe kein",
+    "Leerzeichen vor dem Gleichheitszeichen). Er wurde NICHT uebernommen: eine Zuweisung MIT",
+    "Leerzeichen ist der Normalfall in Python, das Kriterium haette den wichtigsten Fall",
+    "durchgelassen.",
+    "Stattdessen das bestehende Bindestrich-Muster um den Schraegstrich erweitert. GEPRUEFT: die",
+    "Erweiterung ist exakt so sicher wie der Stand davor — ein Wort mit Bindestrichen war schon",
+    "frei, alles mit Ziffern, '+', '=' oder ohne Trenner bleibt rot, und 'geheimnis_formate' greift",
+    "ohnehin unabhaengig vom Kontext (GitHub-Token, PEM, AKIA, sk-...).",
+    "⚠️ Die Regel dahinter, teuer gelernt: einen Fehlalarm des Geheimnis-Zauns ueber den KONTEXT",
+    "beheben, nie ueber den WERT — und wenn eine Wertform doch die richtige Stelle ist, dann die",
+    "engste, die den Fall abdeckt, und jede Lockerung gegen echte Geheimnisse negativ testen."
   ],
   "artefakt_teile": [
     ".egg-info",
