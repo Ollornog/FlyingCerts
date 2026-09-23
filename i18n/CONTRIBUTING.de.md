@@ -19,6 +19,9 @@ bitte lies die passende, bevor du vorschlägst, sie umzustossen.
   hintereinander** — ein Test, der beim zweiten Lauf rot wird, ist kaputt, nicht der Code.
 - Doku und `CHANGELOG.md` wandern im **selben Commit** mit der Änderung, die sie beschreiben.
 - Halte Commits fokussiert. Ein Änderungsgrund pro Commit.
+- Reine Doku-Änderungen nehmen den Schnellpfad von selbst — nichts zu merken, aber
+  `scripts/check.sh --nur-hygiene` ist das lokale Gegenstück, wenn du dieselbe kurze
+  Schleife willst.
 
 ## Was die Suite prüft
 

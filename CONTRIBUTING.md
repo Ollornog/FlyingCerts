@@ -19,6 +19,8 @@ change what it decided.
   **twice in a row** — a test that fails on the second run is broken, not the code.
 - Documentation and `CHANGELOG.md` travel in the **same commit** as the change they describe.
 - Keep commits focused. One reason to change per commit.
+- Documentation-only changes take the fast path automatically — nothing to remember, but
+  `scripts/check.sh --nur-hygiene` is the local equivalent if you want the same short loop.
 
 ## What the suite checks
 
