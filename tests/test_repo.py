@@ -253,6 +253,14 @@ treffer = hygiene.pruefe_testdateien_gerufen(ROOT)
 assert not treffer, f"Testdatei laeuft nirgends mit: {treffer}"
 print("  jede Testdatei wird von einem Laeufer gerufen")
 
+# ---- Veroeffentlichen haengt am Tag (Kit 0.21.8)
+# Ein tag-getriggerter Workflow MIT `workflow_dispatch` ist der einzige, den man vor dem Tag
+# pruefen kann — und genau dort lag die Falle: fuenf von sechs Repos hatten den Knopf, keines
+# hatte ihn je gedrueckt, und ein Druck haette aus einem BRANCH heraus veroeffentlicht.
+treffer = hygiene.pruefe_veroeffentlichen_am_tag(ROOT)
+assert not treffer, f"veroeffentlicht ohne Tag-Bedingung: {treffer}"
+print("  in tag-Workflows haengt jedes Veroeffentlichen am Tag")
+
 treffer = hygiene.pruefe_kit_prueffunktionen_gerufen(ROOT, ausgenommen={
     "pruefe_python_matrix":
         "Go-Repo: ci.yml nutzt go-version-file, es gibt keine Python-Matrix",
