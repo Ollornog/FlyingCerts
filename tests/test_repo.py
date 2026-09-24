@@ -275,5 +275,11 @@ treffer = hygiene.pruefe_kit_prueffunktionen_gerufen(ROOT, ausgenommen={
 assert not treffer, f"Kit-Pruefung ungerufen: {treffer}"
 print("  jede Kit-Pruefung wird gerufen oder ist begruendet ausgenommen")
 
+# Kit 0.22.0 (M-1, Stufe 3): Hat jede Pruefung davor etwas GESEHEN? Eine Pruefung ueber eine
+# leere Menge ist immer gruen. Muss als LETZTE laufen, sie wertet die Fallzahlen davor aus.
+ungesehen = hygiene.pruefe_etwas_gesehen()
+assert not ungesehen, f"Kit-Pruefung ohne Fall: {ungesehen}"
+print("  jede Kit-Pruefung hat etwas gesehen")
+
 
 print("\n\033[32m✓ Repo-Hygiene gruen\033[0m")
