@@ -1,8 +1,15 @@
 name: release
 
+# Der Trockenlauf (`workflow_dispatch`) fehlte hier ganz — und damit die einzige Moeglichkeit,
+# diesen Workflow VOR einem Tag zu pruefen. Ein Workflow mit `on: push: tags` wird von der
+# normalen CI nie beruehrt; er sieht gepflegt aus, weil das Repo gruen ist, aber das Gruen kommt
+# von einem anderen Workflow. Genau hier ist der erste `v0.1.0`-Tag rot gelaufen (fehlendes
+# Pebble, s.u.) — und beim zweiten Mal wieder. Seit 2026-09-24: bauen darf jeder Lauf,
+# veroeffentlichen nur der Tag-Lauf.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -30,6 +37,7 @@ jobs:
       # Erst pruefen, dann bauen: ein Tag, der nicht zur Version im Quelltext passt,
       # erzeugt ein Release, das niemand mehr zuordnen kann.
       - name: Tag gegen internal/version pruefen
+        if: github.ref_type == 'tag'
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           QUELLE="$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)"
@@ -38,6 +46,18 @@ jobs:
             exit 1
           fi
           echo "Version $QUELLE bestaetigt"
+
+      # Ohne Tag ist der Vergleich unmoeglich — geprueft wird, was pruefbar ist: dass die
+      # Version im Quelltext ueberhaupt lesbar ist und im CHANGELOG steht.
+      - name: Trockenlauf — Version und CHANGELOG
+        if: github.ref_type != 'tag'
+        run: |
+          QUELLE="$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)"
+          [ -n "$QUELLE" ] || { echo "Version nicht aus internal/version/version.go lesbar" >&2; exit 1; }
+          echo "Trockenlauf ohne Tag. Version im Quelltext: $QUELLE"
+          grep -q "\[$QUELLE\]" CHANGELOG.md \
+            || { echo "CHANGELOG kennt Version $QUELLE nicht" >&2; exit 1; }
+          echo "CHANGELOG kennt $QUELLE — bereit fuer den Tag v$QUELLE"
 
       # Dieselbe Test-CA wie in ci.yml, und aus demselben Grund: die Suite
       # laesst die Ende-zu-Ende-Tests auf einem Runner absichtlich scheitern
@@ -76,6 +96,13 @@ jobs:
         run: |
           mkdir -p dist
           VERSION="${GITHUB_REF_NAME}"
+          # Im Trockenlauf ist REF_NAME ein Branchname — die Binaries hiessen dann
+          # `..._main_linux_amd64`. Damit der Trockenlauf DASSELBE baut wie der Tag-Lauf,
+          # kommt die Version dann aus dem Quelltext.
+          if [ "${GITHUB_REF_TYPE}" != tag ]; then
+            VERSION="v$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)"
+            echo "Trockenlauf: Version aus dem Quelltext ($VERSION)"
+          fi
           for ziel in linux/amd64 linux/arm64; do
             GOOS="${ziel%/*}"; GOARCH="${ziel#*/}"
             for programm in flying-certs-server flying-certs-agent; do
@@ -96,7 +123,10 @@ jobs:
         # die VEROEFFENTLICHTE SHA256SUMS — `--` haelt die Namen blank.
         run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
 
+      # Nur beim Tag. Bis 2026-09-24 haette allein `--verify-tag` einen Branch-Lauf gebremst —
+      # auf einen Zufall soll sich das Veroeffentlichen nicht verlassen.
       - name: Release anlegen
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag
