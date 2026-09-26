@@ -158,7 +158,11 @@ func IsOrderIndexRace(err error) bool {
 // environment and lets everything else through untouched.
 func RetryPastOrderIndexRace(t *testing.T, fn func() error) error {
 	t.Helper()
-	const attempts = 10
+	// 40 x 500 ms = 20 s, not 10 x 200 ms. On 2026-09-26 the window of 2 s ran out on a
+	// GitHub runner (second run of the suite, -race): all ten attempts logged the same
+	// message, and the test failed although nothing but the indexing was slow. The match
+	// stays exactly as narrow as before; only the patience grew.
+	const attempts = 40
 	var err error
 	for i := range attempts {
 		if err = fn(); !IsOrderIndexRace(err) {
@@ -167,7 +171,7 @@ func RetryPastOrderIndexRace(t *testing.T, fn func() error) error {
 		t.Logf("Pebble has not indexed the predecessor order yet (attempt %d/%d); "+
 			"this is the test server's race, not a failure of the code under test",
 			i+1, attempts)
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 	return err
 }
