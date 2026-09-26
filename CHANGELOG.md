@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   archive holds private keys.
 
 ### Fixed
+- Test only: the wait for Pebble's order-index race is now up to 20 s
+  (40 × 500 ms) instead of 2 s. On a loaded GitHub runner (second run of the
+  suite, `-race`) all ten short attempts ran out and the end-to-end restore
+  test failed although only the test server's indexing was slow. The match on
+  that one message is as narrow as before.
 - The end-to-end tests no longer fail on a race inside Pebble. It finalises
   an order in a goroutine and adds it to its by-serial index only afterwards,
   so a client that renews immediately — naming the predecessor via ARI
