@@ -2,6 +2,9 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    # Wartezeit vor Versions-Updates (PO 2026-09-28), gilt nicht für Sicherheits-Updates.
+    cooldown:
+      default-days: 3
     schedule:
       interval: monthly
     commit-message:
@@ -16,6 +19,9 @@ updates:
         update-types: ["patch", "minor"]
   - package-ecosystem: gomod
     directory: /
+    # Wartezeit vor Versions-Updates (PO 2026-09-28), gilt nicht für Sicherheits-Updates.
+    cooldown:
+      default-days: 3
     schedule:
       interval: monthly
     commit-message:
