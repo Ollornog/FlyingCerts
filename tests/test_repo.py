@@ -262,6 +262,8 @@ assert not treffer, f"veroeffentlicht ohne Tag-Bedingung: {treffer}"
 print("  in tag-Workflows haengt jedes Veroeffentlichen am Tag")
 
 treffer = hygiene.pruefe_kit_prueffunktionen_gerufen(ROOT, ausgenommen={
+    "pruefe_extras_imports":
+        "kein CI-Job ohne Extras (`minimal`) — die Suite läuft immer mit allen Extras, ein ungeschützter Extra-Import kann hier nicht brechen (Kit 0.24.0, T-9)",
     "pruefe_python_matrix":
         "Go-Repo: ci.yml nutzt go-version-file, es gibt keine Python-Matrix",
     "pruefe_requires_python":
