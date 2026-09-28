@@ -27,10 +27,12 @@ permissions:
 
 jobs:
   automerge:
+    # Fork-Schutz über den KOPF: `workflow_run.repository` ist immer das Basis-Repo (Hinweis aus der
+    # TinySesam-Session, 2026-09-28). Die API-Prüfung im Schritt bleibt zusätzlich.
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request' &&
-      github.repository == github.event.workflow_run.repository.full_name &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       startsWith(github.event.workflow_run.head_branch, 'dependabot/')
     runs-on: ubuntu-latest
     steps:
@@ -88,7 +90,7 @@ jobs:
             exit 0
           fi
           if ! gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
-            echo "Nicht mergebar (Pflicht-Checks, veralteter Zweig oder Konflikt) — Dependabot zieht nach."
+            echo "Nicht mergebar (Pflicht-Checks, veralteter Zweig oder Konflikt) — die ci-wache meldet den PR, wenn er liegen bleibt."
             exit 0
           fi
           for wf in $NACHLAUF; do
