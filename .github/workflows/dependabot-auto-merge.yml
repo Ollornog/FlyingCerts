@@ -1,38 +1,52 @@
 # Dependabot Auto-Merge (PO 2026-09-28): Lässt sich ein Update automatisieren und nimmt ein Test es
 # ab, laufen Update und Merge automatisch. Majors und alles, was kein Test abnimmt, bleiben von Hand.
 #
-# Öffentliches Repo mit Pflicht-Checks: GitHubs Auto-Merge wartet auf genau diese Checks
-# (Branch-Protection). Ohne Pflicht-Checks würde `--auto` sofort mergen — deshalb nur hier.
+# WARUM workflow_run (alle Repos, seit 2026-09-28 auch die öffentlichen): Der Folgelauf startet erst,
+# wenn der CI-Lauf fertig ist, läuft im Kontext des Default-Branch und darf schreiben. Gemergt wird
+# nur bei `success` des GANZEN CI-Laufs; wo Branch-Protection gilt, verweigert GitHub den Merge
+# zusätzlich, solange ein Pflicht-Check fehlt oder der Zweig veraltet ist.
 #
-# Ohne Fremd-Action: Update-Typ und Ökosystem kommen per API aus der Commit-Nachricht und dem
-# Branchnamen von Dependabot. Kein Checkout, kein PR-Code; Werte über env; `--match-head-commit`.
+# NACHLAUF: Ein Push mit dem Workflow-Token startet KEINE Workflows (GitHub-Doku, GITHUB_TOKEN) —
+# nach dem Merge lief auf dem Default-Branch keine CI, keine Pages, kein Abbild-Neubau. Ausgenommen
+# ist `workflow_dispatch`: Deshalb stößt dieser Job die Workflows danach selbst an.
+#
+# Ohne Fremd-Action und ohne eigenes Geheimnis: Update-Typ und Ökosystem kommen per API aus den
+# Commits und dem Branchnamen von Dependabot. Kein Checkout, kein PR-Code; Werte über env;
+# Merge nur mit --match-head-commit; läuft auf ubuntu-latest, nie self-hosted.
 name: Dependabot Auto-Merge
 
-on: pull_request
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
 
-permissions: {}
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
 
 jobs:
   automerge:
-    # Hart: Autor Dependabot UND Branch im eigenen Repo — Branchname und Commit-Nachricht
-    # kann ein Fork-PR fälschen. Kein pull_request_target: Fork-Läufe bekommen nur Lese-Token.
     if: >
-      github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.repository == github.event.workflow_run.repository.full_name &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
-      - name: Prüfen und Auto-Merge einschalten
+      - name: Prüfen, mergen, Nachlauf anstoßen
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          # Ökosysteme, die die Pflicht-Checks dieses Repos tatsächlich abnehmen.
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          STANDARD: ${{ github.event.repository.default_branch }}
+          # Ökosysteme, die die CI dieses Repos tatsächlich abnimmt.
           AUTO_OEKO: "github_actions go_modules"
+          # Workflows, die auf dem Default-Branch laufen sollen (brauchen `workflow_dispatch`).
+          NACHLAUF: "ci.yml"
         run: |
+          PR="$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" -q '.[0].number')"
+          [[ "$PR" =~ ^[0-9]+$ ]] || { echo "Kein PR zu $HEAD_SHA"; exit 0; }
           set -euo pipefail
           # Herkunft per API, nie dem Ereignis glauben: Autor Dependabot, kein Fork, offen, Kopf unverändert.
           J="$(gh api "repos/$REPO/pulls/$PR")"
@@ -70,7 +84,13 @@ jobs:
             done <<<"$NAMEN"
           fi
           if [ -n "$GRUND" ]; then
-            gh pr comment "$PR" --repo "$REPO" --body "⚠️ Nicht automatisch gemergt: $GRUND. Bitte von Hand prüfen und mergen."
+            gh pr comment "$PR" --repo "$REPO" --body "⚠️ Nicht automatisch gemergt: $GRUND. CI ist grün — bitte von Hand prüfen und mergen."
             exit 0
           fi
-          gh pr merge "$PR" --repo "$REPO" --auto --squash --delete-branch --match-head-commit "$HEAD_SHA"
+          if ! gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
+            echo "Nicht mergebar (Pflicht-Checks, veralteter Zweig oder Konflikt) — Dependabot zieht nach."
+            exit 0
+          fi
+          for wf in $NACHLAUF; do
+            gh workflow run "$wf" --repo "$REPO" --ref "$STANDARD" && echo "Nachlauf angestoßen: $wf"
+          done
