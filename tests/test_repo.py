@@ -261,6 +261,10 @@ treffer = hygiene.pruefe_veroeffentlichen_am_tag(ROOT)
 assert not treffer, f"veroeffentlicht ohne Tag-Bedingung: {treffer}"
 print("  in tag-Workflows haengt jedes Veroeffentlichen am Tag")
 
+# Kit 0.27.0: Die Worker-Zahl paralleler Läufe kommt aus `CI_KERNE`, nie aus einer Erkennung.
+_pw = hygiene.pruefe_parallel_worker(ROOT, FILES)
+assert not _pw, "Worker-Zahl nicht aus CI_KERNE:\n  " + "\n  ".join(_pw)
+
 treffer = hygiene.pruefe_kit_prueffunktionen_gerufen(ROOT, ausgenommen={
     "pruefe_extras_imports":
         "kein CI-Job ohne Extras (`minimal`) — die Suite läuft immer mit allen Extras, ein ungeschützter Extra-Import kann hier nicht brechen (Kit 0.24.0, T-9)",

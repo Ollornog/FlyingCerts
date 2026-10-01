@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `scripts/check.sh`: `go vet` und `go test` laufen mit `-p "${CI_KERNE:-2}"` — die Zahl
+  gleichzeitiger Pakete kommt vom Runner, nicht aus einer Erkennung der Kerne. Gemessen lokal:
+  seriell 128 s, 6 Pakete gleichzeitig 31 s.
+- Geteilte Testbasis auf repokit 0.27.1; `tests/test_repo.py` ruft `pruefe_parallel_worker`.
+
 ### Added
 - Hardened systemd units for both sides in `examples/systemd/`, plus a
   sudoers snippet that lets the agent reload exactly one service instead of
