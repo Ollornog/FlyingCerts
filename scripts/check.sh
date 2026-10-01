@@ -24,6 +24,11 @@ fail() { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 mapfile -t GO_DATEIEN < <(git ls-files '*.go' 2>/dev/null || true)
 if [[ ${#GO_DATEIEN[@]} -gt 0 ]]; then
     command -v go >/dev/null || fail "Go-Quellen vorhanden, aber keine Go-Toolchain im PATH"
+    # Wie viele Pakete gleichzeitig bauen und testen: die Zahl des Runners (CI_KERNE), sonst 2.
+    # Ohne `-p` nimmt go GOMAXPROCS, also eine Erkennung — mehrere Runner auf einer Maschine
+    # sähen dann jeder alle Kerne.
+    KERNE="${CI_KERNE:-2}"
+    [[ "$KERNE" =~ ^[1-9][0-9]*$ ]] || fail "CI_KERNE=$KERNE — erwartet eine ganze Zahl ≥ 1"
 
     step "gofmt — Formatierung"
     UNFORMATIERT="$(gofmt -l . 2>/dev/null || true)"
@@ -31,19 +36,19 @@ if [[ ${#GO_DATEIEN[@]} -gt 0 ]]; then
     echo "  alle Dateien formatiert"
 
     step "go vet — verdaechtige Konstrukte"
-    go vet ./... || fail "go vet"
+    go vet -p "$KERNE" ./... || fail "go vet"
 
     # -count=1 schaltet den Test-Cache ab. Ohne das meldet ein zweiter Lauf
     # "(cached)" und prueft gar nichts mehr — womit der Wiederholbarkeits-
     # Durchgang der CI zur Zierde wird, obwohl er das Gegenteil beweisen soll.
     if [[ $FAST -eq 1 ]]; then
         step "go test (kurz, --fast)"
-        go test -count=1 -short ./... || fail "go test -short"
+        go test -p "$KERNE" -count=1 -short ./... || fail "go test -short"
     else
         step "go test — mit Race-Detektor"
         # Der Race-Detektor gehoert hier hin, nicht in einen Sonderlauf: der Server bedient
         # mehrere Agenten gleichzeitig und teilt sich Zertifikatszustand.
-        go test -count=1 -race ./... || fail "go test -race"
+        go test -p "$KERNE" -count=1 -race ./... || fail "go test -race"
     fi
 else
     step "Go"
