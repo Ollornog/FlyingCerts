@@ -34,3 +34,17 @@ updates:
       klein:
         patterns: ["*"]
         update-types: ["patch", "minor"]
+  # Das Werkzeug-Modul des Schwachstellen-Tors (.github/audit/go.mod, govulncheck als `tool`).
+  # Ohne den Eintrag würde der Pin des Prüfwerkzeugs still veralten.
+  - package-ecosystem: gomod
+    directory: /.github/audit
+    cooldown:
+      default-days: 3
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    groups:
+      klein:
+        patterns: ["*"]
+        update-types: ["patch", "minor"]

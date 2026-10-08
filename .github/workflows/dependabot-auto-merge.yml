@@ -15,18 +15,23 @@
 # Merge nur mit --match-head-commit; läuft auf ubuntu-latest, nie self-hosted.
 name: Dependabot Auto-Merge
 
-on:
+on:  # zizmor: ignore[dangerous-triggers] — kein Checkout, kein PR-Code; Herkunft per API geprüft
   workflow_run:
-    workflows: ["ci"]
+    # `audit` (Schwachstellen-Tor, M6/B1) ist Pflicht-Check: Endet er NACH der CI, hätte der erste
+    # Anlauf am fehlenden Check abgeprallt und keiner käme mehr. Mit beiden Auslösern mergt der
+    # Lauf, der zuletzt endet; der Branch-Schutz verweigert den Merge, solange einer fehlt.
+    workflows: ["ci", "audit"]
     types: [completed]
 
-permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+# Oben nichts; die Schreibrechte hält allein der Job (least privilege, M6/B1).
+permissions: {}
 
 jobs:
   automerge:
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
     # Fork-Schutz über den KOPF: `workflow_run.repository` ist immer das Basis-Repo (Hinweis aus der
     # TinySesam-Session, 2026-09-28). Die API-Prüfung im Schritt bleibt zusätzlich.
     if: >
@@ -41,11 +46,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          AUSLOESER: ${{ github.event.workflow_run.name }}
           STANDARD: ${{ github.event.repository.default_branch }}
           # Ökosysteme, die die CI dieses Repos tatsächlich abnimmt.
           AUTO_OEKO: "github_actions go_modules"
           # Workflows, die auf dem Default-Branch laufen sollen (brauchen `workflow_dispatch`).
-          NACHLAUF: "ci.yml"
+          NACHLAUF: "ci.yml audit.yml"
         run: |
           PR="$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" -q '.[0].number')"
           [[ "$PR" =~ ^[0-9]+$ ]] || { echo "Kein PR zu $HEAD_SHA"; exit 0; }
@@ -86,6 +92,8 @@ jobs:
             done <<<"$NAMEN"
           fi
           if [ -n "$GRUND" ]; then
+            # Nur der CI-Lauf kommentiert — sonst stünde jeder Hinweis zweimal am PR.
+            [ "$AUSLOESER" = "ci" ] || { echo "Nicht automatisch: $GRUND"; exit 0; }
             gh pr comment "$PR" --repo "$REPO" --body "⚠️ Nicht automatisch gemergt: $GRUND. CI ist grün — bitte von Hand prüfen und mergen."
             exit 0
           fi

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Schwachstellen-Tor (`audit.yml`)
+
+- `govulncheck` über alle Pakete, auf jedem PR, auf `main` und nächtlich (Advisories erscheinen
+  ohne Codeänderung). Rot wird der Lauf bei einer Lücke in einer Funktion, die der Code erreicht
+  (Vorgabe des Werkzeugs); Lücken in nur mitgeführten Modulen stehen im Log (`-show verbose`).
+  Das Werkzeug kommt aus einem eigenen Modul `.github/audit/go.mod` (`tool`-Direktive, Prüfsummen
+  in `go.sum`), nicht aus dem Modulgraphen der Binaries; Dependabot hebt es. Null gefundene
+  Pakete sind rot. `audit` wird Pflicht-Check auf `main`.
+- Stand beim Einbau: 0 erreichbare Lücken. Mitgeführt: GO-2026-5932 (`golang.org/x/crypto/openpgp`
+  ist ungepflegt, kein Fix) — FlyingCerts ruft das Paket nicht.
+
+### Changed — Workflows
+
+- `release.yml`: `setup-go` ohne Cache (`cache: false`); was veröffentlicht wird, stammt nicht aus
+  dem Actions-Cache, den auch PR-Läufe füllen (zizmor `cache-poisoning`).
+- `dependabot-auto-merge.yml`: Schreibrechte nur am Job, oben `permissions: {}`; ausgelöst auch
+  nach `audit`, Nachlauf mit `audit.yml`.
+
 ### Changed
 
 - `scripts/check.sh`: `go vet` und `go test` laufen mit `-p "${CI_KERNE:-2}"` — die Zahl
