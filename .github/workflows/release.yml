@@ -33,6 +33,9 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+          # Kein Modul-/Build-Cache im Release: Was veröffentlicht wird, darf nicht aus dem
+          # Actions-Cache stammen, den auch PR-Läufe füllen (zizmor `cache-poisoning`).
+          cache: false
 
       # Erst pruefen, dann bauen: ein Tag, der nicht zur Version im Quelltext passt,
       # erzeugt ein Release, das niemand mehr zuordnen kann.

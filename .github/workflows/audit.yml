@@ -1,0 +1,60 @@
+name: audit
+
+# Das Schwachstellen-Tor (M6/B1 des Härtungs-Backlogs), Go-Fassung. Dependabot hebt Module, aber
+# ein PR mit einer verwundbaren Abhängigkeit würde ohne Tor grün.
+#
+# `govulncheck` (Go-Team, Go-Schwachstellendatenbank) prüft Module UND Standardbibliothek und meldet
+# als Fehler nur Lücken in Funktionen, die der Code wirklich erreicht. Lücken in Modulen, deren
+# betroffene Funktion nicht gerufen wird, stehen im Log (`-show verbose`), machen den Lauf aber
+# nicht rot — das ist die Vorgabe des Werkzeugs, nicht abgeschwächt.
+#
+# Das Werkzeug kommt aus einem EIGENEN Modul (.github/audit/go.mod, `tool`-Direktive): gepinnt
+# samt Prüfsummen in go.sum, Dependabot (gomod, /.github/audit) hebt es. Es steht nicht im
+# go.mod des Projekts, damit seine Abhängigkeiten nicht in den Modulgraphen der Binaries geraten.
+# Ein Verzeichnis mit führendem Punkt gehört nicht zu `./...` des Projekts.
+#
+# Nächtlich zusätzlich, weil Advisories ohne Codeänderung erscheinen. Öffentliches Repo →
+# `ubuntu-latest`, keine self-hosted Runner. Vorlage: C22 (Python-Fassung).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # GitHub-cron kennt nur UTC: 02:45 UTC = 04:45 Europe/Berlin (MESZ) bzw. 03:45 (MEZ).
+    - cron: "45 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Auf main NICHT abbrechen (siehe ci.yml); auf Feature-Branches zählt nur der letzte Stand.
+  group: audit-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # Dieselbe Go-Fassung wie die CI: govulncheck prüft die Standardbibliothek DER Fassung, mit
+      # der gebaut wird. Kein Modul-Cache (`cache: false`): ein Prüflauf, der aus dem Actions-Cache
+      # lädt, kann vergiftete Module erben.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      # Null Pakete wären ein grüner Lauf ohne Befund: das ist kein Beleg, sondern ein Fehler.
+      - name: Etwas zu prüfen?
+        run: |
+          n="$(go list ./... | wc -l)"
+          echo "Pakete: $n"
+          [ "$n" -gt 0 ] || { echo "::error::keine Pakete gefunden — der Lauf prüfte nichts"; exit 1; }
+
+      - name: govulncheck
+        run: go -C .github/audit tool govulncheck -C "$GITHUB_WORKSPACE" -show verbose ./...
