@@ -245,6 +245,11 @@ treffer = hygiene.pruefe_keine_fremdressourcen(ROOT, FILES, POLICY)
 assert not treffer, f"laedt von Dritten: {treffer}"
 print("  nichts wird von Dritten nachgeladen")
 
+# Kit 0.28 (PO 2026-10-08): jede vollstaendige Seite traegt ein Favicon.
+treffer = hygiene.pruefe_favicon(ROOT, FILES, POLICY)
+assert not treffer, f"Seite ohne Favicon: {treffer}"
+print("  jede Seite hat ein Favicon")
+
 # ---- Wird jede Testdatei ueberhaupt gerufen? (Kit 0.21.0)
 # Von AUSSEN gefragt: ein nicht verkabelter Hygiene-Test besteht seine eigene
 # Aufruf-Pruefung dadurch, dass er schweigt. Autodiscovery (run_all+glob, pytest)
