@@ -1,106 +1,191 @@
-# Dependabot Auto-Merge (PO 2026-09-28): Lässt sich ein Update automatisieren und nimmt ein Test es
-# ab, laufen Update und Merge automatisch. Majors und alles, was kein Test abnimmt, bleiben von Hand.
+# Dependabot Auto-Merge — aus der Vorlage von repokit (`repokit automerge`), nicht von Hand ändern.
+# Je Repo frei ist nur der Block zwischen „je Repo: Anfang“ und „je Repo: Ende“; den Rest prüft
+# `tests/_kit/automerge.py` gegen die Vorlage (Auslöser und Nachlauf werden aus den Workflows des
+# Repos abgeleitet).
 #
-# WARUM workflow_run (alle Repos, seit 2026-09-28 auch die öffentlichen): Der Folgelauf startet erst,
-# wenn der CI-Lauf fertig ist, läuft im Kontext des Default-Branch und darf schreiben. Gemergt wird
-# nur bei `success` des GANZEN CI-Laufs; wo Branch-Protection gilt, verweigert GitHub den Merge
-# zusätzlich, solange ein Pflicht-Check fehlt oder der Zweig veraltet ist.
+# DIE REGEL (PO 2026-10-11, alle Repos): Was die Pflicht-Checks abnehmen, mergt selbst — auch Majors.
+# Eine Meldung gibt es nur, wenn etwas bricht oder nichts abnimmt: Dann steht ein Kommentar am PR,
+# und der liegende PR erreicht den PO über ci-wache („liegt“). Die Wartezeit von drei Tagen
+# (`cooldown` in dependabot.yml) bleibt, damit ein frisch kompromittiertes Release nicht durchläuft.
+# Von Hand bleiben:
+#   - fremde Commits im PR (nicht von Dependabot),
+#   - ein Ökosystem, das kein Pflicht-Check abnimmt (`AUTO_OEKO`),
+#   - eine Action, die in keinem Pflicht-Workflow AUF DEM PR läuft (nur am Tag, nur auf main),
+#   - ein roter Pflicht-Workflow.
 #
-# NACHLAUF: Ein Push mit dem Workflow-Token startet KEINE Workflows (GitHub-Doku, GITHUB_TOKEN) —
-# nach dem Merge lief auf dem Default-Branch keine CI, keine Pages, kein Abbild-Neubau. Ausgenommen
-# ist `workflow_dispatch`: Deshalb stößt dieser Job die Workflows danach selbst an.
+# WARUM `workflow_run` und nicht `gh pr merge --auto`: Ein Merge mit dem Workflow-Token startet
+# KEINE Workflows („events triggered by the GITHUB_TOKEN … will not create a new workflow run“,
+# GitHub-Doku); mit `--auto` lief auf main danach weder CI noch Pages. Ausgenommen ist
+# `workflow_dispatch`: Deshalb mergt dieser Workflow selbst und stößt danach die Workflows an, die
+# ein Push auf den Standardzweig starten würde (Nachlauf).
 #
-# Ohne Fremd-Action und ohne eigenes Geheimnis: Update-Typ und Ökosystem kommen per API aus den
-# Commits und dem Branchnamen von Dependabot. Kein Checkout, kein PR-Code; Werte über env;
-# Merge nur mit --match-head-commit; läuft auf ubuntu-latest, nie self-hosted.
+# Ausgelöst vom Ende JEDES Pflicht-Workflows. Gemergt wird erst, wenn für genau diesen Kopf jeder
+# Pflicht-Workflow gelaufen und grün ist — das gilt auch in privaten Repos ohne Branch-Protection.
+# Wer zuletzt fertig wird, mergt; die anderen enden mit „wartet auf …“. Je Kopf läuft nur eine
+# Instanz (`concurrency`).
+#
+# Zwei Jobs: `entscheiden` liest nur (API, kein Checkout, kein PR-Code), `ausfuehren` hält die
+# Schreibrechte und ruft nur `gh pr merge`, `gh workflow run` und `gh pr comment`.
 name: Dependabot Auto-Merge
 
 on:  # zizmor: ignore[dangerous-triggers] — kein Checkout, kein PR-Code; Herkunft per API geprüft
   workflow_run:
-    # `audit` (Schwachstellen-Tor, M6/B1) ist Pflicht-Check: Endet er NACH der CI, hätte der erste
-    # Anlauf am fehlenden Check abgeprallt und keiner käme mehr. Mit beiden Auslösern mergt der
-    # Lauf, der zuletzt endet; der Branch-Schutz verweigert den Merge, solange einer fehlt.
     workflows: ["ci", "audit"]
     types: [completed]
 
-# Oben nichts; die Schreibrechte hält allein der Job (least privilege, M6/B1).
 permissions: {}
 
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
 jobs:
-  automerge:
-    permissions:
-      contents: write
-      pull-requests: write
-      actions: write
-    # Fork-Schutz über den KOPF: `workflow_run.repository` ist immer das Basis-Repo (Hinweis aus der
-    # TinySesam-Session, 2026-09-28). Die API-Prüfung im Schritt bleibt zusätzlich.
+  entscheiden:
+    # Nur Läufe aus einem PR im EIGENEN Repo auf einem Dependabot-Zweig. Branchname und
+    # Commit-Nachricht kann ein Fork-PR fälschen — deshalb unten alles noch einmal per API.
     if: >
-      github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       startsWith(github.event.workflow_run.head_branch, 'dependabot/')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      actions: read
+    outputs:
+      aktion: ${{ steps.pruefung.outputs.aktion }}
+      grund: ${{ steps.pruefung.outputs.grund }}
+      pr: ${{ steps.pruefung.outputs.pr }}
     steps:
-      - name: Prüfen, mergen, Nachlauf anstoßen
+      - name: Herkunft, Abnahme und Pflicht-Workflows prüfen
+        id: pruefung
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          AUSLOESER: ${{ github.event.workflow_run.name }}
-          STANDARD: ${{ github.event.repository.default_branch }}
-          # Ökosysteme, die die CI dieses Repos tatsächlich abnimmt.
+          # --- je Repo: Anfang
+          # Ökosysteme, die die Pflicht-Checks dieses Repos abnehmen (Branch `dependabot/<ökosystem>/…`).
+          # go_modules = go.mod, ci baut und testet, audit prüft govulncheck.
           AUTO_OEKO: "github_actions go_modules"
-          # Workflows, die auf dem Default-Branch laufen sollen (brauchen `workflow_dispatch`).
-          NACHLAUF: "ci.yml audit.yml"
+          # Die Workflows, deren Jobs die Abnahme sind. Jeder läuft auf `pull_request` ohne Pfadfilter.
+          PFLICHT_WORKFLOWS: "ci.yml audit.yml"
+          # --- je Repo: Ende
         run: |
-          PR="$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" -q '.[0].number')"
-          [[ "$PR" =~ ^[0-9]+$ ]] || { echo "Kein PR zu $HEAD_SHA"; exit 0; }
           set -euo pipefail
+          ausgabe() {
+            { echo "aktion=$1"; echo "grund=$2"; echo "pr=${PR:-}"; } >> "$GITHUB_OUTPUT"
+            echo "$1${2:+: $2}"
+          }
+          PR="$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" -q '.[0].number // ""')"
+          [[ "$PR" =~ ^[0-9]+$ ]] || { ausgabe nichts "kein PR zu $HEAD_SHA"; exit 0; }
           # Herkunft per API, nie dem Ereignis glauben: Autor Dependabot, kein Fork, offen, Kopf unverändert.
           J="$(gh api "repos/$REPO/pulls/$PR")"
-          [ "$(jq -r '.user.login' <<<"$J")" = "dependabot[bot]" ] || { echo "Autor ist nicht Dependabot — nichts zu tun"; exit 0; }
+          [ "$(jq -r '.user.login' <<<"$J")" = "dependabot[bot]" ] || { ausgabe nichts "Autor ist nicht Dependabot"; exit 0; }
           [ "$(jq -r '.head.repo.full_name == .base.repo.full_name' <<<"$J")" = "true" ] || { echo "Fork — Abbruch"; exit 1; }
-          [ "$(jq -r '.state' <<<"$J")" = "open" ] || { echo "PR nicht offen"; exit 0; }
-          [ "$(jq -r '.head.sha' <<<"$J")" = "$HEAD_SHA" ] || { echo "Kopf seit dem Lauf bewegt — kein Merge"; exit 0; }
-          # Ökosystem aus dem Branch (dependabot/<ökosystem>/…), Update-Typ aus der Commit-Nachricht
-          # (Block `updated-dependencies`). Fehlt der Typ, gilt es als unklar — dann von Hand. Das
-          # trifft absichtlich Bereichs-Updates (`>=` in pyproject/uv): Dependabot nennt dort keinen.
+          [ "$(jq -r '.state' <<<"$J")" = "open" ] || { ausgabe nichts "PR nicht offen"; exit 0; }
+          [ "$(jq -r '.head.sha' <<<"$J")" = "$HEAD_SHA" ] || { ausgabe nichts "Kopf seit dem Lauf bewegt"; exit 0; }
+          # Ein Kommentar je Grund genügt — der Workflow läuft je PR mehrmals.
+          schon_gesagt() {
+            [ "$(gh api "repos/$REPO/issues/$PR/comments" --paginate | jq -s --arg g "$1" \
+              '[.[][] | select(.user.login == "github-actions[bot]" and (.body | contains($g)))] | length')" != "0" ]
+          }
+          kommentar() {
+            if schon_gesagt "$1"; then ausgabe nichts "$1 (schon kommentiert)"; else ausgabe kommentieren "$1"; fi
+          }
+          # Ökosystem aus dem Branch (dependabot/<ökosystem>/…). Der Update-Typ entscheidet nichts
+          # (auch Majors mergen, PO 2026-10-11); er steht nur im Protokoll.
           ZWEIG="$(jq -r '.head.ref' <<<"$J")"
           OEKO="${ZWEIG#dependabot/}"; OEKO="${OEKO%%/*}"
-          # ALLE Commits des PRs, nicht nur der Kopf: der kann ein Merge-Commit sein. Stammt einer
-          # nicht von Dependabot, steckt fremde Arbeit im PR — dann von Hand.
           COMMITS="$(gh api "repos/$REPO/pulls/$PR/commits" --paginate)"
           NACHRICHTEN="$(jq -r '.[].commit.message' <<<"$COMMITS")"
           TYPEN="$(grep -oE 'update-type: version-update:semver-(major|minor|patch)' <<<"$NACHRICHTEN" | sort -u || true)"
+          echo "Ökosystem: $OEKO, Update-Typ: ${TYPEN:-nicht erkennbar}"
           GRUND=""
           [ "$(jq -r '[.[] | select(.author.login != "dependabot[bot]")] | length' <<<"$COMMITS")" = "0" ] \
             || GRUND="Commits, die nicht von Dependabot stammen"
-          [ -n "$TYPEN" ] || GRUND="Update-Typ nicht erkennbar"
-          grep -q 'semver-major' <<<"$TYPEN" && GRUND="Major-Update"
-          case " $AUTO_OEKO " in *" $OEKO "*) ;; *) GRUND="${GRUND:-kein Test nimmt \"$OEKO\" ab}" ;; esac
-          # Actions nur, wenn JEDE aktualisierte Action in ci.yml läuft — dem Workflow der
-          # Pflicht-Checks. Eine Action, die nur ein Release- oder Pages-Workflow nutzt, prüft kein
-          # Test; ihr Bump bräche erst bei der nächsten Veröffentlichung (Einwand 2026-09-28).
+          case " $AUTO_OEKO " in *" $OEKO "*) ;; *) GRUND="${GRUND:-kein Pflicht-Check nimmt \"$OEKO\" ab}" ;; esac
+          # Actions nur, wenn JEDE aktualisierte Action in einem Pflicht-Workflow AUF DEM PR läuft:
+          # Jobs und Schritte, die am Tag hängen, zählen nicht — ihr Bump bräche erst beim Release.
+          # Die Generalprobe (Schritt mit `ref_type != 'tag'` gegen ein Wegwerf-Ziel) zählt.
           if [ -z "$GRUND" ] && [ "$OEKO" = "github_actions" ]; then
-            CI_YML="$(gh api "repos/$REPO/contents/.github/workflows/ci.yml?ref=$HEAD_SHA" -q .content | base64 -d)"
+            AM_TAG="ref_type *== *.tag.|startsWith\\(github\\.ref, *.refs/tags"
+            LAUFEN=""
+            for wf in $PFLICHT_WORKFLOWS; do
+              TEXT="$(gh api "repos/$REPO/contents/.github/workflows/$wf?ref=$HEAD_SHA" -q .content | base64 -d)"
+              LAUFEN+="$(AM_TAG="$AM_TAG" yq -r '.jobs[]
+                | select(((.if // "") | test(strenv(AM_TAG))) | not)
+                | .steps[]?
+                | select(((.if // "") | test(strenv(AM_TAG))) | not)
+                | .uses // ""' <<<"$TEXT" | sed 's/@.*//')"$'\n'
+            done
             NAMEN="$(sed -n 's/^[- ]*dependency-name: *//p' <<<"$NACHRICHTEN" | sort -u)"
             [ -n "$NAMEN" ] || GRUND="aktualisierte Actions nicht erkennbar"
             while IFS= read -r n; do
               [ -z "$n" ] && continue
-              grep -qE "uses:[[:space:]]*${n//./\\.}(/[^@[:space:]]*)?@" <<<"$CI_YML" \
-                || { GRUND="Action \"$n\" läuft nicht in ci.yml"; break; }
+              grep -qxE "${n//./\\.}(/.*)?" <<<"$LAUFEN" \
+                || { GRUND="Action \"$n\" läuft in keinem Pflicht-Workflow auf dem PR"; break; }
             done <<<"$NAMEN"
           fi
-          if [ -n "$GRUND" ]; then
-            # Nur der CI-Lauf kommentiert — sonst stünde jeder Hinweis zweimal am PR.
-            [ "$AUSLOESER" = "ci" ] || { echo "Nicht automatisch: $GRUND"; exit 0; }
-            gh pr comment "$PR" --repo "$REPO" --body "⚠️ Nicht automatisch gemergt: $GRUND. CI ist grün — bitte von Hand prüfen und mergen."
-            exit 0
-          fi
-          if ! gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
-            echo "Nicht mergebar (Pflicht-Checks, veralteter Zweig oder Konflikt) — die ci-wache meldet den PR, wenn er liegen bleibt."
-            exit 0
-          fi
-          for wf in $NACHLAUF; do
-            gh workflow run "$wf" --repo "$REPO" --ref "$STANDARD" && echo "Nachlauf angestoßen: $wf"
+          if [ -n "$GRUND" ]; then kommentar "$GRUND"; exit 0; fi
+          # Jeder Pflicht-Workflow muss für genau diesen Kopf gelaufen und grün sein. Läuft einer
+          # noch, endet dieser Lauf; dessen Ende löst den nächsten Anlauf aus.
+          LAEUFE="$(gh api "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" -q '.workflow_runs')"
+          for wf in $PFLICHT_WORKFLOWS; do
+            L="$(jq -c --arg p ".github/workflows/$wf" '[.[] | select(.path == $p)] | sort_by(.created_at) | last // empty' <<<"$LAEUFE")"
+            [ -n "$L" ] || { ausgabe nichts "wartet auf $wf (noch kein Lauf)"; exit 0; }
+            [ "$(jq -r '.status' <<<"$L")" = "completed" ] || { ausgabe nichts "wartet auf $wf"; exit 0; }
+            ERG="$(jq -r '.conclusion' <<<"$L")"
+            [ "$ERG" = "success" ] || { kommentar "Pflicht-Workflow $wf ist rot ($ERG)"; exit 0; }
           done
+          # Alle grün. Jetzt noch die Checks, die NACH ihrem Workflow kommen (CodeQL-Ergebnis):
+          # warten, bis GitHub den PR als mergebar meldet und kein Check mehr läuft — mit Frist.
+          for _ in $(seq 1 30); do
+            P="$(gh pr view "$PR" --repo "$REPO" --json state,headRefOid,mergeStateStatus,statusCheckRollup)"
+            [ "$(jq -r '.state' <<<"$P")" = "OPEN" ] || { ausgabe nichts "PR nicht mehr offen"; exit 0; }
+            [ "$(jq -r '.headRefOid' <<<"$P")" = "$HEAD_SHA" ] || { ausgabe nichts "Kopf bewegt"; exit 0; }
+            ROT="$(jq -r '[.statusCheckRollup[] | select(((.conclusion // .state // "") | test("FAILURE|ERROR|CANCELLED|TIMED_OUT|ACTION_REQUIRED|STARTUP_FAILURE")) ) | (.name // .context)] | unique | join(", ")' <<<"$P")"
+            [ -z "$ROT" ] || { kommentar "Check rot ($ROT)"; exit 0; }
+            OFFEN="$(jq -r '[.statusCheckRollup[] | select((.status // "COMPLETED") != "COMPLETED" or (.state // "") == "PENDING")] | length' <<<"$P")"
+            case "$(jq -r '.mergeStateStatus' <<<"$P")" in
+              CLEAN) [ "$OFFEN" = "0" ] && { ausgabe mergen ""; exit 0; } ;;
+              BEHIND|DIRTY) ausgabe nichts "Zweig veraltet oder im Konflikt — Dependabot zieht nach"; exit 0 ;;
+            esac
+            sleep 20
+          done
+          ausgabe nichts "nach 10 min noch nicht mergebar — der nächste fertige Pflicht-Workflow prüft erneut"
+
+  ausfuehren:
+    timeout-minutes: 10
+    needs: entscheiden
+    if: needs.entscheiden.outputs.aktion == 'mergen' || needs.entscheiden.outputs.aktion == 'kommentieren'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write       # `gh workflow run` für den Nachlauf
+    steps:
+      # Gemergt wird genau der geprüfte Kopf. Danach der Nachlauf: Was ein Push auf den
+      # Standardzweig startet, stößt hier `workflow_dispatch` an.
+      - name: Mergen und den Nachlauf anstoßen
+        if: needs.entscheiden.outputs.aktion == 'mergen'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.entscheiden.outputs.pr }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          STANDARD: ${{ github.event.repository.default_branch }}
+        run: |
+          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+          gh workflow run audit.yml --repo "$REPO" --ref "$STANDARD"
+          gh workflow run ci.yml --repo "$REPO" --ref "$STANDARD"
+      - name: Begründen, warum von Hand
+        if: needs.entscheiden.outputs.aktion == 'kommentieren'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.entscheiden.outputs.pr }}
+          GRUND: ${{ needs.entscheiden.outputs.grund }}
+        run: |
+          gh pr comment "$PR" --repo "$REPO" --body "⚠️ Nicht automatisch gemergt: $GRUND. Bitte von Hand prüfen und mergen."
