@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Dependabot-Auto-Merge aus der repokit-Vorlage (Kit 0.30.1)
+
+- Updates mergen selbst, sobald die Pflicht-Checks grün sind — **auch Majors** (PO 2026-10-11).
+  Von Hand bleiben nur fremde Commits, ein Ökosystem ohne Abnahme, eine Action, die auf dem PR
+  nicht läuft, und ein roter Pflicht-Workflow; dann steht ein Kommentar am PR.
+- Gemergt wird erst, wenn jeder Pflicht-Workflow für genau diesen Kopf gelaufen und grün ist.
+- Der Workflow kommt aus einer Vorlage; `tests/_kit/manifest.py` prüft ihn mit.
+
 ### Added — Schwachstellen-Tor (`audit.yml`)
 
 - `govulncheck` über alle Pakete, auf jedem PR, auf `main` und nächtlich (Advisories erscheinen
