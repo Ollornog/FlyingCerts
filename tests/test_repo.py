@@ -270,6 +270,12 @@ print("  in tag-Workflows haengt jedes Veroeffentlichen am Tag")
 _pw = hygiene.pruefe_parallel_worker(ROOT, FILES)
 assert not _pw, "Worker-Zahl nicht aus CI_KERNE:\n  " + "\n  ".join(_pw)
 
+# Das Schwachstellen-Tor (Kit 0.31.0, M6/B1): audit.yml mit govulncheck und gepinntem Werkzeug-Modul
+# (.github/audit/go.mod) existiert; deshalb GERUFEN, nicht ausgenommen.
+treffer = hygiene.pruefe_audit_workflow(ROOT, FILES)
+assert not treffer, f"Schwachstellen-Tor fehlt oder ist nicht scharf: {treffer}"
+print("  Schwachstellen-Tor: govulncheck, Werkzeug gehasht gepinnt")
+
 treffer = hygiene.pruefe_kit_prueffunktionen_gerufen(ROOT, ausgenommen={
     "pruefe_extras_imports":
         "kein CI-Job ohne Extras (`minimal`) — die Suite läuft immer mit allen Extras, ein ungeschützter Extra-Import kann hier nicht brechen (Kit 0.24.0, T-9)",
